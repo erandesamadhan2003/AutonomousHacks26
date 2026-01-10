@@ -8,20 +8,34 @@ export const useAuth = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
     const hasCheckedAuth = useRef(false);
+    const isCheckingAuth = useRef(false);
 
     const { user, token, loading, error, isAuthenticated } = useSelector((state) => state.auth);
 
     useEffect(() => {
         const storedToken = localStorage.getItem('token');
-        if (storedToken && !user && !hasCheckedAuth.current) {
+
+        // Only fetch if:
+        // 1. We have a token
+        // 2. No user data
+        // 3. Haven't checked yet
+        // 4. Not currently checking
+        // 5. Not already authenticated
+        if (storedToken && !user && !hasCheckedAuth.current && !isCheckingAuth.current && !isAuthenticated) {
             hasCheckedAuth.current = true;
-            dispatch(getCurrentUser());
+            isCheckingAuth.current = true;
+
+            dispatch(getCurrentUser())
+                .finally(() => {
+                    isCheckingAuth.current = false;
+                });
         }
-    }, []);
+    }, [dispatch]); // Remove user from dependencies to prevent loops
 
     const register = async (userData) => {
         try {
             const result = await dispatch(registerUser(userData)).unwrap();
+            hasCheckedAuth.current = true;
             navigate('/dashboard');
             return result;
         } catch (err) {
@@ -33,6 +47,7 @@ export const useAuth = () => {
     const login = async (credentials) => {
         try {
             const result = await dispatch(loginUser(credentials)).unwrap();
+            hasCheckedAuth.current = true;
             navigate('/dashboard');
             return result;
         } catch (err) {
@@ -44,10 +59,13 @@ export const useAuth = () => {
     const logout = async () => {
         try {
             await dispatch(logoutUser()).unwrap();
+            hasCheckedAuth.current = false;
+            isCheckingAuth.current = false;
             navigate('/login');
         } catch (err) {
             console.error('Logout error:', err);
-            // Navigate to login even if logout fails
+            hasCheckedAuth.current = false;
+            isCheckingAuth.current = false;
             navigate('/login');
         }
     }
@@ -58,19 +76,16 @@ export const useAuth = () => {
 
     const verifyAuthToken = async (token) => {
         try {
-            // First set the token in localStorage
             localStorage.setItem('token', token);
 
-            // Then fetch user data with the token
             const result = await dispatch(verifyUserToken(token)).unwrap();
+            hasCheckedAuth.current = true;
 
-            // Ensure credentials are properly set
             dispatch(setCredentials({
                 user: result.user,
                 token: token
             }));
 
-            // Small delay to ensure state is updated
             setTimeout(() => {
                 navigate('/dashboard');
             }, 100);
@@ -84,12 +99,20 @@ export const useAuth = () => {
     }
 
     const fetchCurrentUser = async () => {
+        if (isCheckingAuth.current) {
+            console.warn('Already fetching user data');
+            return null;
+        }
+
         try {
+            isCheckingAuth.current = true;
             const result = await dispatch(getCurrentUser()).unwrap();
             return result;
         } catch (err) {
             console.error('Fetch current user error:', err);
             throw err;
+        } finally {
+            isCheckingAuth.current = false;
         }
     }
 

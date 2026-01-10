@@ -10,6 +10,7 @@ import socialAccountRoutes from './routes/socialAccount.routes.js';
 import postRoutes from './routes/post.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import preferencesRoutes from './routes/preferences.routes.js';
+import dashboardRoutes from './routes/dashboard.routes.js';
 import { configurePassport } from './config/passport.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 import { generalLimiter } from './middleware/rateLimiter.js';
@@ -67,6 +68,7 @@ app.use('/api/social-accounts', socialAccountRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/preferences', preferencesRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 app.get('/', (req, res) => {
   res.json({
@@ -102,7 +104,10 @@ app.get('/', (req, res) => {
       preferences: {
         get: 'GET /api/preferences',
         update: 'PATCH /api/preferences'
-      }
+      },
+      dashboard: {
+        overview: 'GET /api/dashboard/overview'
+      },
     }
   });
 });

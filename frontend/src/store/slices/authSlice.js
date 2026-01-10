@@ -45,14 +45,50 @@ export const verifyUserToken = createAsyncThunk('auth/verifyUserToken', async (t
     }
 });
 
-export const getCurrentUser = createAsyncThunk('auth/getCurrentUser', async (_, { rejectWithValue }) => {
-    try {
-        const response = await getProfile();
-        return response;
-    } catch (error) {
-        return rejectWithValue(error.response?.data?.message || 'Failed to get user profile');
+export const getCurrentUser = createAsyncThunk(
+    'auth/getCurrentUser',
+    async (_, { rejectWithValue, getState }) => {
+        try {
+            const state = getState();
+
+            // If user already exists and is authenticated, return it
+            if (state.auth.user && state.auth.isAuthenticated) {
+                return { user: state.auth.user };
+            }
+
+            // If already loading, skip the request
+            if (state.auth.loading) {
+                return rejectWithValue('Already loading user data');
+            }
+
+            const response = await getProfile();
+            return response;
+        } catch (error) {
+            if (error.response?.status === 429) {
+                return rejectWithValue('Too many requests. Please wait a moment.');
+            }
+
+            // Don't throw error for unauthorized - just clear auth
+            if (error.response?.status === 401) {
+                localStorage.removeItem('token');
+                return rejectWithValue('Session expired. Please login again.');
+            }
+
+            return rejectWithValue(error.response?.data?.message || error.message || 'Failed to get user profile');
+        }
+    },
+    {
+        // Prevent duplicate concurrent requests
+        condition: (_, { getState }) => {
+            const { auth } = getState();
+            // Don't run if already loading or if user exists
+            if (auth.loading || (auth.user && auth.isAuthenticated)) {
+                return false;
+            }
+            return true;
+        }
     }
-});
+);
 
 const authSlice = createSlice({
     name: 'auth',
@@ -65,6 +101,7 @@ const authSlice = createSlice({
             state.user = action.payload.user;
             state.token = action.payload.token;
             state.isAuthenticated = true;
+            state.error = null;
 
             if (action.payload.token) {
                 localStorage.setItem('token', action.payload.token);
@@ -74,6 +111,7 @@ const authSlice = createSlice({
             state.user = null;
             state.token = null;
             state.isAuthenticated = false;
+            state.error = null;
             localStorage.removeItem('token');
         },
         setToken: (state, action) => {
@@ -145,16 +183,28 @@ const authSlice = createSlice({
             // Get Current User
             .addCase(getCurrentUser.pending, (state) => {
                 state.loading = true;
-                state.error = null;
             })
             .addCase(getCurrentUser.fulfilled, (state, action) => {
                 state.loading = false;
                 state.isAuthenticated = true;
                 state.user = action.payload.user;
+                state.error = null;
             })
             .addCase(getCurrentUser.rejected, (state, action) => {
                 state.loading = false;
-                state.error = action.payload;
+
+                // Only clear auth on session expired or unauthorized
+                if (action.payload?.includes('Session expired') || action.payload?.includes('unauthorized')) {
+                    state.isAuthenticated = false;
+                    state.user = null;
+                    state.token = null;
+                    localStorage.removeItem('token');
+                }
+
+                // Don't set error for "already loading" or rate limits
+                if (!action.payload?.includes('Already loading') && !action.payload?.includes('Too many requests')) {
+                    state.error = action.payload;
+                }
             })
             // Logout User
             .addCase(logoutUser.pending, (state) => {

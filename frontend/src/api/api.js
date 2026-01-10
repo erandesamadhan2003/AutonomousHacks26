@@ -8,7 +8,16 @@ export const AUTH_URL = {
     GOOGLE_AUTH: `/auth/google`,
     GET_PROFILE: `/auth/profile`,
     LOGOUT: `/auth/logout`,
-}
+};
+
+export const DASHBOARD_URL = {
+    OVERVIEW: `/dashboard/overview`,
+    RECENT_ACTIVITY: `/dashboard/recent-activity`,
+    QUICK_STATS: `/dashboard/quick-stats`,
+    TOP_POSTS: `/dashboard/top-posts`,
+    ENGAGEMENT_CHART: `/dashboard/engagement-chart`,
+    CONNECTED_ACCOUNTS: `/dashboard/connected-accounts`,
+};
 
 const api = axios.create({
     baseURL: BASE_URL,
