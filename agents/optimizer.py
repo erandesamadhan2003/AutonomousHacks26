@@ -77,10 +77,16 @@ class InstagramCaptionOptimizer:
 
         return [t for t in response.text.split() if t.startswith("#")][:15]
 
-    def optimize(self, image_path: str, intent: str) -> str:
+    def optimize(self, image_path: str, intent: str) -> dict:
         image_analysis = self.analyze_image(image_path)
         strategy = self.decide_strategy(intent, image_analysis)
         caption = self.generate_caption(intent, image_analysis, strategy)
         hashtags = self.generate_hashtags(image_analysis, intent)
 
-        return f"Caption:\n{caption}\n\nHashtags:\n{' '.join(hashtags)}"
+        # Return structured data so callers don't need to parse strings
+        return {
+            "caption": caption,
+            "hashtags": hashtags,
+            "analysis": image_analysis,
+            "strategy": strategy,
+        }
