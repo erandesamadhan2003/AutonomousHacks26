@@ -1,72 +1,92 @@
 import { UserPreferences } from '../models/UserPreferences.js';
 
+// Get Preferences
 export const getPreferences = async (req, res) => {
     try {
-        let preferences = await UserPreferences.findOne({ userId: req.user._id });
+        const userId = req.user._id;
+
+        let preferences = await UserPreferences.findOne({ userId });
 
         if (!preferences) {
+            // Create default preferences
             preferences = await UserPreferences.create({
-                userId: req.user._id,
+                userId,
                 brandVoice: {
-                    tone: 'casual'
+                    tone: 'professional',
+                    style: 'informative',
+                    keywords: []
+                },
+                platformPreferences: {
+                    instagram: { enabled: true, autoPost: false, bestTimes: [] },
+                    linkedin: { enabled: true, autoPost: false, bestTimes: [] }
+                },
+                notifications: {
+                    email: true,
+                    push: true,
+                    postPublished: true,
+                    metricsUpdate: false,
+                    weeklyReport: true
+                },
+                aiSettings: {
+                    captionVariations: 3,
+                    imageEnhancements: true,
+                    videoGeneration: true,
+                    musicSuggestions: true
                 }
             });
         }
 
-        res.json({
+        res.status(200).json({
             success: true,
-            data: {
-                brandVoice: preferences.brandVoice,
-                platformPreferences: preferences.platformPreferences,
-                learningData: preferences.learningData
-            }
+            data: preferences
         });
     } catch (error) {
         console.error('Get preferences error:', error);
         res.status(500).json({
             success: false,
-            message: error.message || 'Server error while fetching preferences'
+            message: error.message || 'Failed to fetch preferences'
         });
     }
 };
 
+// Update Preferences
 export const updatePreferences = async (req, res) => {
     try {
-        const { brandVoice, platformPreferences } = req.body;
+        const userId = req.user._id;
+        const updates = req.body;
 
-        let preferences = await UserPreferences.findOne({ userId: req.user._id });
+        let preferences = await UserPreferences.findOne({ userId });
 
         if (!preferences) {
-            preferences = await UserPreferences.create({
-                userId: req.user._id,
-                brandVoice: brandVoice || { tone: 'casual' },
-                platformPreferences: platformPreferences || {}
-            });
-        } else {
-            if (brandVoice) {
-                preferences.brandVoice = { ...preferences.brandVoice, ...brandVoice };
-            }
-            if (platformPreferences) {
-                preferences.platformPreferences = { ...preferences.platformPreferences, ...platformPreferences };
-            }
-            await preferences.save();
+            preferences = new UserPreferences({ userId });
         }
 
-        res.json({
+        // Update fields
+        if (updates.brandVoice) {
+            preferences.brandVoice = { ...preferences.brandVoice, ...updates.brandVoice };
+        }
+        if (updates.platformPreferences) {
+            preferences.platformPreferences = { ...preferences.platformPreferences, ...updates.platformPreferences };
+        }
+        if (updates.notifications) {
+            preferences.notifications = { ...preferences.notifications, ...updates.notifications };
+        }
+        if (updates.aiSettings) {
+            preferences.aiSettings = { ...preferences.aiSettings, ...updates.aiSettings };
+        }
+
+        await preferences.save();
+
+        res.status(200).json({
             success: true,
-            data: {
-                updated: true,
-                preferences: {
-                    brandVoice: preferences.brandVoice,
-                    platformPreferences: preferences.platformPreferences
-                }
-            }
+            message: 'Preferences updated successfully',
+            data: preferences
         });
     } catch (error) {
         console.error('Update preferences error:', error);
         res.status(500).json({
             success: false,
-            message: error.message || 'Server error while updating preferences'
+            message: error.message || 'Failed to update preferences'
         });
     }
 };

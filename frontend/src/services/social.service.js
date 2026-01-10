@@ -1,48 +1,57 @@
-import { api } from "../api/api";
+import { api } from "@/api/api";
 
-const SOCIAL_URL = {
-    GET_ACCOUNTS: `/social/accounts`,
-    ADD_ACCOUNT: `/social/accounts`,
-    REMOVE_ACCOUNT: `/social/accounts`,
-    UPDATE_ACCOUNT: `/social/accounts`,
-};
+const SOCIAL_BASE = '/api/social-accounts';
 
-export const getSocialAccounts = async () => {
+export const getAccounts = async () => {
     try {
-        const response = await api.get(SOCIAL_URL.GET_ACCOUNTS);
-        return response.data;
+        const { data } = await api.get(SOCIAL_BASE);
+        return data;
     } catch (error) {
-        console.error("Get social accounts error:", error);
+        console.error("Get accounts error:", error);
         throw error;
     }
 };
 
-export const addSocialAccount = async (accountData) => {
+export const connectAccount = async (platform, code, redirectUri) => {
     try {
-        const response = await api.post(SOCIAL_URL.ADD_ACCOUNT, accountData);
-        return response.data;
+        const { data } = await api.post(`${SOCIAL_BASE}/connect`, {
+            platform,
+            code,
+            redirectUri
+        });
+        return data;
     } catch (error) {
-        console.error("Add social account error:", error);
+        console.error("Connect account error:", error);
         throw error;
     }
 };
 
-export const removeSocialAccount = async (accountId) => {
+export const getAccountById = async (id) => {
     try {
-        const response = await api.delete(`${SOCIAL_URL.REMOVE_ACCOUNT}/${accountId}`);
-        return response.data;
+        const { data } = await api.get(`${SOCIAL_BASE}/${id}`);
+        return data;
     } catch (error) {
-        console.error("Remove social account error:", error);
+        console.error("Get account by ID error:", error);
         throw error;
     }
 };
 
-export const updateSocialAccount = async (accountId, accountData) => {
+export const disconnectAccount = async (id) => {
     try {
-        const response = await api.put(`${SOCIAL_URL.UPDATE_ACCOUNT}/${accountId}`, accountData);
-        return response.data;
+        const { data } = await api.delete(`${SOCIAL_BASE}/${id}`);
+        return data;
     } catch (error) {
-        console.error("Update social account error:", error);
+        console.error("Disconnect account error:", error);
+        throw error;
+    }
+};
+
+export const refreshAccountData = async (id) => {
+    try {
+        const { data } = await api.post(`${SOCIAL_BASE}/${id}/refresh`);
+        return data;
+    } catch (error) {
+        console.error("Refresh account data error:", error);
         throw error;
     }
 };

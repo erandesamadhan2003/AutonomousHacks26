@@ -1,219 +1,120 @@
-import { AgentJob } from '../models/AgentJob.js';
 import { DraftPost } from '../models/DraftPost.js';
 import { PublishedPost } from '../models/PublishedPost.js';
-import { SocialAccount } from '../models/SocialAccount.js';
+import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary.js';
+import { startAgentPipeline } from '../services/agent.service.js';
+import { publishToInstagram, publishToLinkedIn } from '../services/social.service.js';
 
+// Create Draft
 export const createDraft = async (req, res) => {
     try {
-        const { socialAccountId, platform, description } = req.body;
-        const images = req.files;
+        const { caption, platforms, hashtags, scheduledFor } = req.body;
+        const userId = req.user._id;
 
-        if (!socialAccountId || !platform || !description) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please provide all required fields'
-            });
-        }
-
-        const socialAccount = await SocialAccount.findOne({
-            _id: socialAccountId,
-            userId: req.user._id
-        });
-
-        if (!socialAccount) {
-            return res.status(404).json({
-                success: false,
-                message: 'Social account not found'
-            });
-        }
-
-        const uploadedImages = images ? images.map(file => ({
-            url: `/uploads/${file.filename}`,
-            filename: file.filename,
-            size: file.size
-        })) : [];
-
-        const draft = await DraftPost.create({
-            userId: req.user._id,
-            socialAccountId,
-            platform,
-            userDescription: description,
-            uploadedImages,
-            status: 'processing',
-            agentStatus: {
-                imageProcessing: { status: 'pending' },
-                captionGeneration: { status: 'pending' },
-                videoGeneration: { status: 'pending' },
-                musicSuggestion: { status: 'pending' }
+        // Upload images to Cloudinary
+        const uploadedImages = [];
+        if (req.files && req.files.length > 0) {
+            for (const file of req.files) {
+                const result = await uploadToCloudinary(file.path, 'drafts');
+                uploadedImages.push({
+                    url: result.secure_url,
+                    publicId: result.public_id,
+                    format: result.format,
+                    width: result.width,
+                    height: result.height
+                });
             }
+        }
+
+        // Create draft post
+        const draft = await DraftPost.create({
+            userId,
+            originalCaption: caption,
+            originalImages: uploadedImages,
+            platforms: platforms ? platforms.split(',') : ['instagram'],
+            hashtags: hashtags ? hashtags.split(',').map(h => h.trim()) : [],
+            scheduledFor: scheduledFor || null,
+            status: 'processing'
         });
 
-        // Queue agent jobs
-        const agentTypes = ['image_processing', 'caption_generation', 'video_generation', 'music_suggestion'];
-        for (const agentType of agentTypes) {
-            await AgentJob.create({
-                draftPostId: draft._id,
-                agentType,
-                status: 'pending',
-                priority: 5,
-                inputData: {
-                    description,
-                    images: uploadedImages
-                }
-            });
-        }
+        // Trigger agent pipeline
+        const job = await startAgentPipeline({
+            draftId: draft._id,
+            userId,
+            originalCaption: caption,
+            originalImages: uploadedImages,
+            platforms: draft.platforms
+        });
 
         res.status(201).json({
             success: true,
+            message: 'Draft created and AI processing started',
             data: {
                 draftId: draft._id,
-                status: draft.status,
-                message: 'Your content is being processed by our AI agents'
+                jobId: job._id,
+                status: draft.status
             }
         });
     } catch (error) {
         console.error('Create draft error:', error);
         res.status(500).json({
             success: false,
-            message: error.message || 'Server error while creating draft'
+            message: error.message || 'Failed to create draft'
         });
     }
 };
 
-export const getDraftStatus = async (req, res) => {
+// Get Drafts
+export const getDrafts = async (req, res) => {
     try {
-        const { draftId } = req.params;
+        const userId = req.user._id;
+        const { status, platform, search, page = 1, limit = 10 } = req.query;
 
-        const draft = await DraftPost.findOne({
-            _id: draftId,
-            userId: req.user._id
-        });
+        const query = { userId, isDeleted: false };
 
-        if (!draft) {
-            return res.status(404).json({
-                success: false,
-                message: 'Draft not found'
-            });
-        }
-
-        res.json({
-            success: true,
-            data: {
-                id: draft._id,
-                status: draft.status,
-                agentStatus: draft.agentStatus,
-                generatedContent: {
-                    processedImages: draft.processedImages,
-                    captions: draft.generatedCaptions,
-                    hashtags: draft.hashtags.map(h => h.tag),
-                    video: draft.generatedVideo,
-                    musicSuggestions: draft.musicSuggestions
-                }
-            }
-        });
-    } catch (error) {
-        console.error('Get draft status error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message || 'Server error while fetching draft'
-        });
-    }
-};
-
-export const updateDraft = async (req, res) => {
-    try {
-        const { draftId } = req.params;
-        const { selectedCaption, selectedImages, selectedMusic, additionalHashtags } = req.body;
-
-        const draft = await DraftPost.findOne({
-            _id: draftId,
-            userId: req.user._id
-        });
-
-        if (!draft) {
-            return res.status(404).json({
-                success: false,
-                message: 'Draft not found'
-            });
-        }
-
-        if (selectedCaption) draft.selectedCaption = selectedCaption;
-        if (selectedMusic) draft.selectedMusic = selectedMusic;
-        if (selectedImages) draft.processedImages = selectedImages.map(url => ({ url, variant: 'selected' }));
-        if (additionalHashtags) {
-            draft.hashtags.push(...additionalHashtags.map(tag => ({ tag, relevanceScore: 0.8 })));
-        }
-
-        draft.status = 'ready';
-        await draft.save();
-
-        res.json({
-            success: true,
-            data: {
-                draftId: draft._id,
-                status: draft.status,
-                updatedContent: {
-                    selectedCaption: draft.selectedCaption,
-                    processedImages: draft.processedImages,
-                    selectedMusic: draft.selectedMusic,
-                    hashtags: draft.hashtags
-                }
-            }
-        });
-    } catch (error) {
-        console.error('Update draft error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message || 'Server error while updating draft'
-        });
-    }
-};
-
-export const getAllDrafts = async (req, res) => {
-    try {
-        const { status, limit = 10, page = 1 } = req.query;
-
-        const query = { userId: req.user._id };
         if (status) query.status = status;
+        if (platform) query.platforms = platform;
+        if (search) {
+            query.$or = [
+                { originalCaption: { $regex: search, $options: 'i' } },
+                { 'aiGeneratedCaptions.text': { $regex: search, $options: 'i' } }
+            ];
+        }
 
         const skip = (parseInt(page) - 1) * parseInt(limit);
+        const total = await DraftPost.countDocuments(query);
 
         const drafts = await DraftPost.find(query)
             .sort({ createdAt: -1 })
-            .limit(parseInt(limit))
             .skip(skip)
-            .populate('socialAccountId', 'platform username');
+            .limit(parseInt(limit))
+            .select('-__v');
 
-        const total = await DraftPost.countDocuments(query);
-
-        res.json({
+        res.status(200).json({
             success: true,
-            data: {
-                drafts,
-                pagination: {
-                    total,
-                    page: parseInt(page),
-                    pages: Math.ceil(total / parseInt(limit))
-                }
+            data: drafts,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                pages: Math.ceil(total / parseInt(limit))
             }
         });
     } catch (error) {
         console.error('Get drafts error:', error);
         res.status(500).json({
             success: false,
-            message: error.message || 'Server error while fetching drafts'
+            message: error.message || 'Failed to fetch drafts'
         });
     }
 };
 
-export const publishPost = async (req, res) => {
+// Get Draft By ID
+export const getDraftById = async (req, res) => {
     try {
-        const { draftId, scheduleAt } = req.body;
+        const { id } = req.params;
+        const userId = req.user._id;
 
-        const draft = await DraftPost.findOne({
-            _id: draftId,
-            userId: req.user._id
-        });
+        const draft = await DraftPost.findOne({ _id: id, userId, isDeleted: false });
 
         if (!draft) {
             return res.status(404).json({
@@ -222,107 +123,305 @@ export const publishPost = async (req, res) => {
             });
         }
 
-        if (draft.status !== 'ready') {
-            return res.status(400).json({
+        res.status(200).json({
+            success: true,
+            data: draft
+        });
+    } catch (error) {
+        console.error('Get draft by ID error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to fetch draft'
+        });
+    }
+};
+
+// Update Draft
+export const updateDraft = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user._id;
+        const updates = req.body;
+
+        const draft = await DraftPost.findOne({ _id: id, userId, isDeleted: false });
+
+        if (!draft) {
+            return res.status(404).json({
                 success: false,
-                message: 'Draft is not ready for publishing'
+                message: 'Draft not found'
             });
         }
 
-        if (scheduleAt) {
-            draft.scheduledAt = new Date(scheduleAt);
-            draft.status = 'scheduled';
-            await draft.save();
+        // Update allowed fields
+        const allowedUpdates = [
+            'selectedCaption',
+            'selectedImages',
+            'selectedVideo',
+            'selectedMusic',
+            'platforms',
+            'hashtags',
+            'scheduledFor',
+            'status'
+        ];
 
-            return res.json({
-                success: true,
-                data: {
-                    draftId: draft._id,
-                    status: 'scheduled',
-                    scheduledAt: draft.scheduledAt
-                }
-            });
-        }
-
-        // TODO: Implement actual publishing to social media platform
-        const mockPlatformPostId = `${draft.platform}_${Date.now()}`;
-
-        const publishedPost = await PublishedPost.create({
-            userId: req.user._id,
-            socialAccountId: draft.socialAccountId,
-            draftPostId: draft._id,
-            platform: draft.platform,
-            platformPostId: mockPlatformPostId,
-            caption: draft.selectedCaption || draft.generatedCaptions[0]?.text,
-            hashtags: draft.hashtags.map(h => h.tag),
-            mediaUrls: draft.processedImages.map(img => img.url),
-            postType: draft.generatedVideo ? 'video' : 'image'
+        allowedUpdates.forEach(field => {
+            if (updates[field] !== undefined) {
+                draft[field] = updates[field];
+            }
         });
 
-        draft.status = 'published';
-        draft.publishedAt = new Date();
-        draft.publishedPostId = mockPlatformPostId;
         await draft.save();
 
-        res.json({
+        res.status(200).json({
             success: true,
+            message: 'Draft updated successfully',
+            data: draft
+        });
+    } catch (error) {
+        console.error('Update draft error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to update draft'
+        });
+    }
+};
+
+// Delete Draft
+export const deleteDraft = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user._id;
+
+        const draft = await DraftPost.findOne({ _id: id, userId, isDeleted: false });
+
+        if (!draft) {
+            return res.status(404).json({
+                success: false,
+                message: 'Draft not found'
+            });
+        }
+
+        // Delete images from Cloudinary
+        const allImages = [
+            ...draft.originalImages,
+            ...draft.aiGeneratedImages
+        ];
+
+        for (const image of allImages) {
+            if (image.publicId) {
+                await deleteFromCloudinary(image.publicId);
+            }
+        }
+
+        // Soft delete
+        draft.isDeleted = true;
+        await draft.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Draft deleted successfully'
+        });
+    } catch (error) {
+        console.error('Delete draft error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to delete draft'
+        });
+    }
+};
+
+// Publish Post
+export const publishPost = async (req, res) => {
+    try {
+        const { draftId, platforms } = req.body;
+        const userId = req.user._id;
+
+        const draft = await DraftPost.findOne({ _id: draftId, userId, isDeleted: false });
+
+        if (!draft) {
+            return res.status(404).json({
+                success: false,
+                message: 'Draft not found'
+            });
+        }
+
+        const publishResults = [];
+        const targetPlatforms = platforms || draft.platforms;
+
+        // Publish to each platform
+        for (const platform of targetPlatforms) {
+            try {
+                let result;
+                const postData = {
+                    caption: draft.selectedCaption || draft.originalCaption,
+                    images: draft.selectedImages || draft.originalImages,
+                    video: draft.selectedVideo,
+                    hashtags: draft.hashtags
+                };
+
+                if (platform === 'instagram') {
+                    result = await publishToInstagram(userId, postData);
+                } else if (platform === 'linkedin') {
+                    result = await publishToLinkedIn(userId, postData);
+                }
+
+                if (result.success) {
+                    publishResults.push({
+                        platform,
+                        success: true,
+                        postId: result.postId,
+                        url: result.url
+                    });
+
+                    // Create published post record
+                    await PublishedPost.create({
+                        userId,
+                        draftId: draft._id,
+                        platform,
+                        platformPostId: result.postId,
+                        postUrl: result.url,
+                        caption: postData.caption,
+                        images: postData.images,
+                        video: postData.video,
+                        hashtags: postData.hashtags,
+                        publishedAt: new Date()
+                    });
+                } else {
+                    publishResults.push({
+                        platform,
+                        success: false,
+                        error: result.error
+                    });
+                }
+            } catch (error) {
+                publishResults.push({
+                    platform,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        // Update draft status
+        draft.status = 'published';
+        draft.publishedAt = new Date();
+        await draft.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Post published',
             data: {
-                publishedPostId: publishedPost._id,
-                platformPostId: mockPlatformPostId,
-                publishedAt: publishedPost.publishedAt,
-                postUrl: `https://${draft.platform}.com/p/${mockPlatformPostId}`
+                draftId: draft._id,
+                results: publishResults
             }
         });
     } catch (error) {
         console.error('Publish post error:', error);
         res.status(500).json({
             success: false,
-            message: error.message || 'Server error while publishing post'
+            message: error.message || 'Failed to publish post'
         });
     }
 };
 
+// Get Published Posts
 export const getPublishedPosts = async (req, res) => {
     try {
-        const { platform, limit = 20, page = 1 } = req.query;
+        const userId = req.user._id;
+        const { platform, dateFrom, dateTo, page = 1, limit = 10 } = req.query;
 
-        const query = { userId: req.user._id };
+        const query = { userId, isDeleted: false };
+
         if (platform) query.platform = platform;
+        if (dateFrom || dateTo) {
+            query.publishedAt = {};
+            if (dateFrom) query.publishedAt.$gte = new Date(dateFrom);
+            if (dateTo) query.publishedAt.$lte = new Date(dateTo);
+        }
 
         const skip = (parseInt(page) - 1) * parseInt(limit);
+        const total = await PublishedPost.countDocuments(query);
 
         const posts = await PublishedPost.find(query)
             .sort({ publishedAt: -1 })
+            .skip(skip)
             .limit(parseInt(limit))
-            .skip(skip);
+            .select('-__v');
 
-        const total = await PublishedPost.countDocuments(query);
-
-        const formattedPosts = posts.map(post => ({
-            id: post._id,
-            caption: post.caption,
-            mediaUrls: post.mediaUrls,
-            publishedAt: post.publishedAt,
-            platform: post.platform,
-            metrics: post.metrics
-        }));
-
-        res.json({
+        res.status(200).json({
             success: true,
-            data: {
-                posts: formattedPosts,
-                pagination: {
-                    total,
-                    page: parseInt(page),
-                    pages: Math.ceil(total / parseInt(limit))
-                }
+            data: posts,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                pages: Math.ceil(total / parseInt(limit))
             }
         });
     } catch (error) {
         console.error('Get published posts error:', error);
         res.status(500).json({
             success: false,
-            message: error.message || 'Server error while fetching published posts'
+            message: error.message || 'Failed to fetch published posts'
+        });
+    }
+};
+
+// Get Published Post By ID
+export const getPublishedPostById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user._id;
+
+        const post = await PublishedPost.findOne({ _id: id, userId, isDeleted: false });
+
+        if (!post) {
+            return res.status(404).json({
+                success: false,
+                message: 'Post not found'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: post
+        });
+    } catch (error) {
+        console.error('Get published post error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to fetch post'
+        });
+    }
+};
+
+// Delete Published Post
+export const deletePublishedPost = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user._id;
+
+        const post = await PublishedPost.findOne({ _id: id, userId, isDeleted: false });
+
+        if (!post) {
+            return res.status(404).json({
+                success: false,
+                message: 'Post not found'
+            });
+        }
+
+        post.isDeleted = true;
+        await post.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Post deleted successfully'
+        });
+    } catch (error) {
+        console.error('Delete post error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to delete post'
         });
     }
 };

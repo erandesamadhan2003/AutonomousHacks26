@@ -1,73 +1,62 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-    getDashboardAnalytics,
-    getPerformanceAnalytics,
-    getInsights,
+    getOverview,
     getPostAnalytics,
-    getEngagementMetrics,
+    refreshMetrics,
+    getEngagementTrend,
+    getTopPosts,
+    getHashtagPerformance,
+    getBestPostingTimes,
+    getInsights
 } from "@/services/analytics.service";
 
-export const useAnalytics = () => {
-    const [dashboardData, setDashboardData] = useState(null);
-    const [performanceData, setPerformanceData] = useState(null);
-    const [insightsData, setInsightsData] = useState(null);
-    const [postAnalytics, setPostAnalytics] = useState(null);
-    const [engagementData, setEngagementData] = useState(null);
+export const useAnalytics = (initialFilters = {}) => {
+    const [data, setData] = useState({
+        overview: null,
+        engagementTrend: [],
+        topPosts: [],
+        hashtags: [],
+        bestTimes: null,
+        insights: []
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [filters, setFilters] = useState(initialFilters);
 
-    const fetchDashboard = useCallback(async (dateRange = {}) => {
+    const fetchAll = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const data = await getDashboardAnalytics(dateRange);
-            setDashboardData(data);
-            return data;
+            const [overview, trend, top, hashtags, times, insights] = await Promise.all([
+                getOverview(filters),
+                getEngagementTrend(filters.period || '30d'),
+                getTopPosts({ ...filters, limit: 10 }),
+                getHashtagPerformance(filters.period || '30d'),
+                getBestPostingTimes(filters.period || '30d'),
+                getInsights(filters.period || '30d')
+            ]);
+
+            setData({
+                overview: overview.data,
+                engagementTrend: trend.data,
+                topPosts: top.data,
+                hashtags: hashtags.data,
+                bestTimes: times.data,
+                insights: insights.data
+            });
         } catch (err) {
-            setError(err.response?.data?.message || "Failed to fetch dashboard analytics");
-            throw err;
+            setError(err.response?.data?.message || "Failed to fetch analytics");
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [filters]);
 
-    const fetchPerformance = async (filters = {}) => {
+    const fetchPostAnalytics = async (id) => {
         setLoading(true);
         setError(null);
         try {
-            const data = await getPerformanceAnalytics(filters);
-            setPerformanceData(data);
-            return data;
-        } catch (err) {
-            setError(err.response?.data?.message || "Failed to fetch performance analytics");
-            throw err;
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchInsights = async (filters = {}) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const data = await getInsights(filters);
-            setInsightsData(data);
-            return data;
-        } catch (err) {
-            setError(err.response?.data?.message || "Failed to fetch insights");
-            throw err;
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchPostAnalytics = async (postId) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const data = await getPostAnalytics(postId);
-            setPostAnalytics(data);
-            return data;
+            const response = await getPostAnalytics(id);
+            return response.data;
         } catch (err) {
             setError(err.response?.data?.message || "Failed to fetch post analytics");
             throw err;
@@ -76,36 +65,32 @@ export const useAnalytics = () => {
         }
     };
 
-    const fetchEngagement = async (filters = {}) => {
+    const refresh = async (postId) => {
         setLoading(true);
         setError(null);
         try {
-            const data = await getEngagementMetrics(filters);
-            setEngagementData(data);
-            return data;
+            const response = await refreshMetrics(postId);
+            return response.data;
         } catch (err) {
-            setError(err.response?.data?.message || "Failed to fetch engagement metrics");
+            setError(err.response?.data?.message || "Failed to refresh metrics");
             throw err;
         } finally {
             setLoading(false);
         }
     };
 
-    const clearError = () => setError(null);
+    useEffect(() => {
+        fetchAll();
+    }, [fetchAll]);
 
     return {
-        dashboardData,
-        performanceData,
-        insightsData,
-        postAnalytics,
-        engagementData,
+        data,
         loading,
         error,
-        fetchDashboard,
-        fetchPerformance,
-        fetchInsights,
+        filters,
+        setFilters,
+        fetchAll,
         fetchPostAnalytics,
-        fetchEngagement,
-        clearError,
+        refresh
     };
 };

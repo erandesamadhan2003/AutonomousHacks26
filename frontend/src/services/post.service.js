@@ -1,114 +1,98 @@
-import { api } from "../api/api";
+import { api } from "@/api/api";
 
-const POST_URL = {
-    CREATE_POST: `/posts`,
-    GET_POSTS: `/posts`,
-    GET_POST: `/posts`,
-    UPDATE_POST: `/posts`,
-    DELETE_POST: `/posts`,
-    SCHEDULE_POST: `/posts/schedule`,
-    PUBLISH_POST: `/posts/publish`,
-    GET_DRAFTS: `/posts/drafts`,
-    GET_SCHEDULED: `/posts/scheduled`,
-    GET_PUBLISHED: `/posts/published`,
-};
+const POST_BASE = '/api/posts';
 
-export const createPost = async (postData) => {
+// Draft Management
+export const createDraft = async (formData) => {
     try {
-        const response = await api.post(POST_URL.CREATE_POST, postData);
-        return response.data;
+        const { data } = await api.post(`${POST_BASE}/draft`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return data;
     } catch (error) {
-        console.error("Create post error:", error);
+        console.error("Create draft error:", error);
         throw error;
     }
 };
 
-export const getPosts = async (filters = {}) => {
+export const getDrafts = async (filters = {}) => {
     try {
-        const response = await api.get(POST_URL.GET_POSTS, { params: filters });
-        return response.data;
-    } catch (error) {
-        console.error("Get posts error:", error);
-        throw error;
-    }
-};
-
-export const getPost = async (postId) => {
-    try {
-        const response = await api.get(`${POST_URL.GET_POST}/${postId}`);
-        return response.data;
-    } catch (error) {
-        console.error("Get post error:", error);
-        throw error;
-    }
-};
-
-export const updatePost = async (postId, postData) => {
-    try {
-        const response = await api.put(`${POST_URL.UPDATE_POST}/${postId}`, postData);
-        return response.data;
-    } catch (error) {
-        console.error("Update post error:", error);
-        throw error;
-    }
-};
-
-export const deletePost = async (postId) => {
-    try {
-        const response = await api.delete(`${POST_URL.DELETE_POST}/${postId}`);
-        return response.data;
-    } catch (error) {
-        console.error("Delete post error:", error);
-        throw error;
-    }
-};
-
-export const schedulePost = async (postId, scheduleData) => {
-    try {
-        const response = await api.post(`${POST_URL.SCHEDULE_POST}/${postId}`, scheduleData);
-        return response.data;
-    } catch (error) {
-        console.error("Schedule post error:", error);
-        throw error;
-    }
-};
-
-export const publishPost = async (postId) => {
-    try {
-        const response = await api.post(`${POST_URL.PUBLISH_POST}/${postId}`);
-        return response.data;
-    } catch (error) {
-        console.error("Publish post error:", error);
-        throw error;
-    }
-};
-
-export const getDrafts = async () => {
-    try {
-        const response = await api.get(POST_URL.GET_DRAFTS);
-        return response.data;
+        const { data } = await api.get(`${POST_BASE}/drafts`, { params: filters });
+        return data;
     } catch (error) {
         console.error("Get drafts error:", error);
         throw error;
     }
 };
 
-export const getScheduledPosts = async () => {
+export const getDraftById = async (id) => {
     try {
-        const response = await api.get(POST_URL.GET_SCHEDULED);
-        return response.data;
+        const { data } = await api.get(`${POST_BASE}/draft/${id}`);
+        return data;
     } catch (error) {
-        console.error("Get scheduled posts error:", error);
+        console.error("Get draft by ID error:", error);
         throw error;
     }
 };
 
-export const getPublishedPosts = async () => {
+export const updateDraft = async (id, updates) => {
     try {
-        const response = await api.get(POST_URL.GET_PUBLISHED);
-        return response.data;
+        const { data } = await api.patch(`${POST_BASE}/draft/${id}`, updates);
+        return data;
+    } catch (error) {
+        console.error("Update draft error:", error);
+        throw error;
+    }
+};
+
+export const deleteDraft = async (id) => {
+    try {
+        const { data } = await api.delete(`${POST_BASE}/draft/${id}`);
+        return data;
+    } catch (error) {
+        console.error("Delete draft error:", error);
+        throw error;
+    }
+};
+
+// Publishing
+export const publishPost = async (publishData) => {
+    try {
+        const { data } = await api.post(`${POST_BASE}/publish`, publishData);
+        return data;
+    } catch (error) {
+        console.error("Publish post error:", error);
+        throw error;
+    }
+};
+
+// Published Posts
+export const getPublishedPosts = async (filters = {}) => {
+    try {
+        const { data } = await api.get(`${POST_BASE}/published`, { params: filters });
+        return data;
     } catch (error) {
         console.error("Get published posts error:", error);
+        throw error;
+    }
+};
+
+export const getPublishedPostById = async (id) => {
+    try {
+        const { data } = await api.get(`${POST_BASE}/published/${id}`);
+        return data;
+    } catch (error) {
+        console.error("Get published post error:", error);
+        throw error;
+    }
+};
+
+export const deletePublishedPost = async (id) => {
+    try {
+        const { data } = await api.delete(`${POST_BASE}/published/${id}`);
+        return data;
+    } catch (error) {
+        console.error("Delete published post error:", error);
         throw error;
     }
 };

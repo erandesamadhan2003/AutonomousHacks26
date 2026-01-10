@@ -1,122 +1,153 @@
-import { SocialAccount } from '../models/SocialAccount.js';
+import {SocialAccount} from '../models/SocialAccount.js';
+import {
+    exchangeInstagramCode,
+    getInstagramProfile,
+    exchangeLinkedInCode,
+    getLinkedInProfile
+} from '../services/social.service.js';
 
+// Connect Account
 export const connectAccount = async (req, res) => {
     try {
-        const { platform, code } = req.body;
+        const { code, platform, redirectUri } = req.body;
+        const userId = req.user._id;
 
-        if (!platform || !code) {
+        if (!code || !platform) {
             return res.status(400).json({
                 success: false,
-                message: 'Please provide platform and authorization code'
+                message: 'Code and platform are required'
             });
         }
 
-        // TODO: Exchange code for access token with platform OAuth
-        // This is a placeholder - implement actual OAuth exchange
-        const mockTokenData = {
-            accessToken: 'mock_access_token',
-            refreshToken: 'mock_refresh_token',
-            expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
-            platformUserId: 'platform_user_id',
-            username: 'user_' + platform,
-            profileData: {
-                displayName: 'User Name',
-                profilePicture: 'https://example.com/pic.jpg',
-                followerCount: 1000,
-                followingCount: 500
-            }
-        };
+        let accessToken, profile;
 
-        const existingAccount = await SocialAccount.findOne({
-            userId: req.user._id,
-            platform
-        });
-
-        if (existingAccount) {
-            existingAccount.accessToken = mockTokenData.accessToken;
-            existingAccount.refreshToken = mockTokenData.refreshToken;
-            existingAccount.tokenExpiresAt = mockTokenData.expiresAt;
-            existingAccount.isActive = true;
-            await existingAccount.save();
-
-            return res.json({
-                success: true,
-                data: {
-                    accountId: existingAccount._id,
-                    platform: existingAccount.platform,
-                    username: existingAccount.username,
-                    profilePicture: existingAccount.profileData.profilePicture,
-                    permissions: existingAccount.permissions
-                }
+        // Exchange code for access token and get profile
+        if (platform === 'instagram') {
+            const tokenData = await exchangeInstagramCode(code, redirectUri);
+            accessToken = tokenData.access_token;
+            profile = await getInstagramProfile(accessToken);
+        } else if (platform === 'linkedin') {
+            const tokenData = await exchangeLinkedInCode(code, redirectUri);
+            accessToken = tokenData.access_token;
+            profile = await getLinkedInProfile(accessToken);
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: 'Unsupported platform'
             });
         }
 
-        const socialAccount = await SocialAccount.create({
-            userId: req.user._id,
+        // Check if account already exists
+        let account = await SocialAccount.findOne({
+            userId,
             platform,
-            platformUserId: mockTokenData.platformUserId,
-            username: mockTokenData.username,
-            accessToken: mockTokenData.accessToken,
-            refreshToken: mockTokenData.refreshToken,
-            tokenExpiresAt: mockTokenData.expiresAt,
-            profileData: mockTokenData.profileData,
-            permissions: ['publish_content', 'read_insights']
+            platformUserId: profile.id
         });
 
-        res.status(201).json({
+        if (account) {
+            // Update existing account
+            account.accessToken = accessToken;
+            account.profile = profile;
+            account.connected = true;
+            account.lastSyncedAt = new Date();
+        } else {
+            // Create new account
+            account = new SocialAccount({
+                userId,
+                platform,
+                platformUserId: profile.id,
+                accessToken,
+                profile,
+                connected: true,
+                lastSyncedAt: new Date()
+            });
+        }
+
+        await account.save();
+
+        res.status(200).json({
             success: true,
+            message: 'Account connected successfully',
             data: {
-                accountId: socialAccount._id,
-                platform: socialAccount.platform,
-                username: socialAccount.username,
-                profilePicture: socialAccount.profileData.profilePicture,
-                permissions: socialAccount.permissions
+                id: account._id,
+                platform: account.platform,
+                profile: account.profile,
+                connected: account.connected
             }
         });
     } catch (error) {
         console.error('Connect account error:', error);
         res.status(500).json({
             success: false,
-            message: error.message || 'Server error while connecting account'
+            message: error.message || 'Failed to connect account'
         });
     }
 };
 
-export const getConnectedAccounts = async (req, res) => {
+// Get Accounts
+export const getAccounts = async (req, res) => {
     try {
-        const accounts = await SocialAccount.find({ userId: req.user._id })
-            .select('platform username profileData isActive createdAt')
+        const userId = req.user._id;
+
+        const accounts = await SocialAccount.find({ userId, isDeleted: false })
+            .select('-accessToken -refreshToken -__v')
             .sort({ createdAt: -1 });
 
-        const formattedAccounts = accounts.map(account => ({
-            id: account._id,
-            platform: account.platform,
-            username: account.username,
-            profilePicture: account.profileData?.profilePicture,
-            isActive: account.isActive,
-            connectedAt: account.createdAt
-        }));
-
-        res.json({
+        res.status(200).json({
             success: true,
-            data: formattedAccounts
+            data: accounts
         });
     } catch (error) {
         console.error('Get accounts error:', error);
         res.status(500).json({
             success: false,
-            message: error.message || 'Server error while fetching accounts'
+            message: error.message || 'Failed to fetch accounts'
         });
     }
 };
 
-export const disconnectAccount = async (req, res) => {
+// Get Account By ID
+export const getAccountById = async (req, res) => {
     try {
-        const { accountId } = req.params;
+        const { id } = req.params;
+        const userId = req.user._id;
 
         const account = await SocialAccount.findOne({
-            _id: accountId,
-            userId: req.user._id
+            _id: id,
+            userId,
+            isDeleted: false
+        }).select('-accessToken -refreshToken -__v');
+
+        if (!account) {
+            return res.status(404).json({
+                success: false,
+                message: 'Account not found'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: account
+        });
+    } catch (error) {
+        console.error('Get account error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to fetch account'
+        });
+    }
+};
+
+// Disconnect Account
+export const disconnectAccount = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user._id;
+
+        const account = await SocialAccount.findOne({
+            _id: id,
+            userId,
+            isDeleted: false
         });
 
         if (!account) {
@@ -126,10 +157,11 @@ export const disconnectAccount = async (req, res) => {
             });
         }
 
-        account.isActive = false;
+        account.isDeleted = true;
+        account.connected = false;
         await account.save();
 
-        res.json({
+        res.status(200).json({
             success: true,
             message: 'Account disconnected successfully'
         });
@@ -137,7 +169,57 @@ export const disconnectAccount = async (req, res) => {
         console.error('Disconnect account error:', error);
         res.status(500).json({
             success: false,
-            message: error.message || 'Server error while disconnecting account'
+            message: error.message || 'Failed to disconnect account'
+        });
+    }
+};
+
+// Refresh Account Data
+export const refreshAccountData = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user._id;
+
+        const account = await SocialAccount.findOne({
+            _id: id,
+            userId,
+            isDeleted: false
+        });
+
+        if (!account) {
+            return res.status(404).json({
+                success: false,
+                message: 'Account not found'
+            });
+        }
+
+        // Fetch latest profile data
+        let profile;
+        if (account.platform === 'instagram') {
+            profile = await getInstagramProfile(account.accessToken);
+        } else if (account.platform === 'linkedin') {
+            profile = await getLinkedInProfile(account.accessToken);
+        }
+
+        account.profile = profile;
+        account.lastSyncedAt = new Date();
+        await account.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Account data refreshed',
+            data: {
+                id: account._id,
+                platform: account.platform,
+                profile: account.profile,
+                lastSyncedAt: account.lastSyncedAt
+            }
+        });
+    } catch (error) {
+        console.error('Refresh account error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to refresh account data'
         });
     }
 };
