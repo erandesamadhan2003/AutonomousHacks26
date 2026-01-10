@@ -11,7 +11,11 @@ export const MainLayout = () => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Close mobile sidebar on route change or when clicking outside
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [location.pathname]);
+
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 768) {
@@ -37,15 +41,10 @@ export const MainLayout = () => {
     "/create-post",
     "/drafts",
     "/published",
-    "/scheduled",
     "/analytics",
-    "/insights",
     "/social-accounts",
     "/preferences",
     "/profile",
-    "/notifications",
-    "/tools",
-    "/pricing",
   ];
 
   const showSidebar =
@@ -53,7 +52,7 @@ export const MainLayout = () => {
     protectedRoutes.some((route) => location.pathname.startsWith(route));
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-gray-50 via-purple-50/30 to-pink-50/30">
+    <div className="min-h-screen bg-gray-50">
       {/* Navbar */}
       <Navbar
         user={user}
@@ -63,7 +62,7 @@ export const MainLayout = () => {
       />
 
       {/* Mobile Sidebar Overlay */}
-      {isMobileSidebarOpen && isAuthenticated && (
+      {isMobileSidebarOpen && showSidebar && (
         <div
           className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden transition-opacity duration-300"
           onClick={toggleMobileSidebar}
@@ -71,65 +70,45 @@ export const MainLayout = () => {
       )}
 
       {/* Layout Container */}
-      <div className="flex pt-16 min-h-screen">
+      <div className="flex pt-16">
         {/* Sidebar */}
         {showSidebar && (
           <>
             {/* Desktop Sidebar */}
+            <div className="hidden md:block">
+              <Sidebar user={user} onCollapse={handleSidebarCollapse} />
+            </div>
+
+            {/* Mobile Sidebar */}
             <div
               className={cn(
-                "hidden md:block w-64 fixed left-0 top-16 bottom-0 bg-white border-r border-gray-200 overflow-y-auto",
-                isMobileSidebarOpen
-                  ? "translate-x-0"
-                  : "-translate-x-full md:translate-x-0"
+                "fixed left-0 top-16 bottom-0 w-72 bg-white border-r border-gray-200 z-50 md:hidden transition-transform duration-300 ease-in-out",
+                isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
               )}
             >
               <Sidebar
                 user={user}
-                isMobileOpen={isMobileSidebarOpen}
                 onCollapse={handleSidebarCollapse}
+                onNavigate={() => setIsMobileSidebarOpen(false)}
               />
             </div>
-
-            {/* Mobile Sidebar */}
-            {isMobileSidebarOpen && (
-              <>
-                <div
-                  className="fixed inset-0 bg-black/50 z-40 md:hidden"
-                  onClick={() => setIsMobileSidebarOpen(false)}
-                />
-                <div className="fixed left-0 top-16 bottom-0 w-64 bg-white border-r border-gray-200 overflow-y-auto z-50 md:hidden">
-                  <Sidebar
-                    user={user}
-                    isMobileOpen={isMobileSidebarOpen}
-                    onCollapse={handleSidebarCollapse}
-                    onNavigate={() => setIsMobileSidebarOpen(false)}
-                  />
-                </div>
-              </>
-            )}
           </>
         )}
 
         {/* Main Content Area */}
         <main
           className={cn(
-            "flex-1 transition-all duration-300 ease-in-out",
-            isAuthenticated
-              ? sidebarCollapsed
-                ? "md:ml-20"
-                : "md:ml-72"
-              : "ml-0"
+            "flex-1 min-h-[calc(100vh-4rem)] transition-all duration-300 ease-in-out",
+            showSidebar ? (sidebarCollapsed ? "md:ml-20" : "md:ml-72") : "ml-0"
           )}
         >
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl">
-            {/* Scrollable Content Area */}
-            <div className="min-h-[calc(100vh-8rem)]">
-              <Outlet />
-            </div>
+          <div className="h-full">
+            <Outlet />
+          </div>
 
-            {/* Footer */}
-            <footer className="mt-12 py-6 border-t border-gray-200">
+          {/* Footer */}
+          <footer className="border-t border-gray-200 bg-white px-4 sm:px-6 lg:px-8">
+            <div className="max-w-7xl mx-auto py-6">
               <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-gray-600">
                 <p>© 2024 SocialBoost AI. All rights reserved.</p>
                 <div className="flex gap-6">
@@ -153,8 +132,8 @@ export const MainLayout = () => {
                   </a>
                 </div>
               </div>
-            </footer>
-          </div>
+            </div>
+          </footer>
         </main>
       </div>
     </div>

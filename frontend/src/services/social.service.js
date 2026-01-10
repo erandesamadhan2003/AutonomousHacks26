@@ -1,6 +1,6 @@
 import { api } from "@/api/api";
 
-const SOCIAL_BASE = '/api/social-accounts';
+const SOCIAL_BASE = '/social-accounts';
 
 export const getAccounts = async () => {
     try {

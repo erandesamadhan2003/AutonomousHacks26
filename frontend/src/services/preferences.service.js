@@ -1,6 +1,6 @@
 import { api } from "@/api/api";
 
-const PREFERENCES_BASE = '/api/preferences';
+const PREFERENCES_BASE = '/preferences';
 
 export const getPreferences = async () => {
     try {

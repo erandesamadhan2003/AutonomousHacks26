@@ -32,7 +32,7 @@ export const Navbar = ({
 }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [notificationCount] = useState(3);
+  const [notificationCount] = useState(1);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const navigate = useNavigate();
   const confirmRef = useRef(null);
@@ -152,34 +152,6 @@ export const Navbar = ({
             <div className="flex items-center gap-2">
               {isAuthenticated ? (
                 <>
-                  {/* Notifications */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="relative hover:bg-purple-50"
-                    onClick={() => navigate("/notifications")}
-                  >
-                    <Bell className="h-5 w-5 text-gray-700" />
-                    {notificationCount > 0 && (
-                      <span className="absolute -top-1 -right-1 h-5 w-5 bg-linear-to-r from-purple-500 to-pink-500 text-white text-xs font-semibold rounded-full flex items-center justify-center shadow-lg">
-                        {notificationCount}
-                      </span>
-                    )}
-                  </Button>
-
-                  {/* Dark Mode Toggle */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={toggleDarkMode}
-                    className="hover:bg-purple-50"
-                  >
-                    {isDarkMode ? (
-                      <Sun className="h-5 w-5 text-gray-700" />
-                    ) : (
-                      <Moon className="h-5 w-5 text-gray-700" />
-                    )}
-                  </Button>
 
                   {/* User Dropdown */}
                   <DropdownMenu>

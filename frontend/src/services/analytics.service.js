@@ -1,6 +1,6 @@
 import { api } from "@/api/api";
 
-const ANALYTICS_BASE = '/api/analytics';
+const ANALYTICS_BASE = '/analytics';
 
 export const getOverview = async (filters = {}) => {
     try {

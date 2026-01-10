@@ -1,6 +1,6 @@
 import { api } from "@/api/api";
 
-const POST_BASE = '/api/posts';
+const POST_BASE = '/posts';
 
 // Draft Management
 export const createDraft = async (formData) => {

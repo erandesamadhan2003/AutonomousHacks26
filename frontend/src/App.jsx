@@ -4,9 +4,16 @@ import { Home } from "./pages/Home";
 import { Login } from "./pages/auth/Login";
 import { Signup } from "./pages/auth/Signup";
 import DashboardPage from "./pages/Dashboard";
+import DraftsPage from "./pages/DraftsPage";
+import PublishedPostsPage from "./pages/PublishedPostsPage";
 import { useSelector } from "react-redux";
 import { AuthCallBack } from "./pages/auth/AuthCallBack";
 import MainLayout from "./components/common/MainLayout";
+import CreatePost from "./pages/CreatePost";
+import AnalyticsPage from "./pages/AnalyticsPage";
+import SocialAccountsPage from "./pages/SocialAccountsPage";
+import PreferencesPage from "./pages/PreferencesPage";
+import ProfilePage from "./pages/ProfilePage";
 
 const ProtectedRoute = ({ children }) => {
   const { token, isAuthenticated } = useSelector((state) => state.auth);
@@ -69,7 +76,7 @@ const Router = createBrowserRouter([
         path: "create-post",
         element: (
           <ProtectedRoute>
-            <div>Create Post Page</div>
+            <CreatePost />
           </ProtectedRoute>
         ),
       },
@@ -77,7 +84,7 @@ const Router = createBrowserRouter([
         path: "drafts",
         element: (
           <ProtectedRoute>
-            <div>Drafts Page</div>
+            <DraftsPage />
           </ProtectedRoute>
         ),
       },
@@ -85,7 +92,7 @@ const Router = createBrowserRouter([
         path: "published",
         element: (
           <ProtectedRoute>
-            <div>Published Posts Page</div>
+            <PublishedPostsPage />
           </ProtectedRoute>
         ),
       },
@@ -101,7 +108,7 @@ const Router = createBrowserRouter([
         path: "analytics",
         element: (
           <ProtectedRoute>
-            <div>Analytics Page</div>
+            <AnalyticsPage />
           </ProtectedRoute>
         ),
       },
@@ -117,7 +124,7 @@ const Router = createBrowserRouter([
         path: "social-accounts",
         element: (
           <ProtectedRoute>
-            <div>Social Accounts Page</div>
+            <SocialAccountsPage />
           </ProtectedRoute>
         ),
       },
@@ -125,7 +132,7 @@ const Router = createBrowserRouter([
         path: "preferences",
         element: (
           <ProtectedRoute>
-            <div>Preferences Page</div>
+            <PreferencesPage />
           </ProtectedRoute>
         ),
       },
@@ -133,7 +140,7 @@ const Router = createBrowserRouter([
         path: "profile",
         element: (
           <ProtectedRoute>
-            <div>Profile Page</div>
+            <ProfilePage />
           </ProtectedRoute>
         ),
       },
