@@ -1,0 +1,15 @@
+# Flask and CORS
+Flask==3.1.0
+flask-cors==6.0.2
+
+# Environment and HTTP
+python-dotenv==1.0.1
+requests==2.32.3
+
+# AI/ML - Caption Agent
+google-generativeai==0.8.3
+
+# Image Processing - Image Agent
+Pillow==11.0.0
+opencv-python==4.11.0.86
+numpy==2.2.5
