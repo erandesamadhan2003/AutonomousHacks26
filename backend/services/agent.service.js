@@ -1,4 +1,6 @@
 import axios from 'axios';
+import FormData from 'form-data';
+import fs from 'fs';
 import { AgentJob } from '../models/AgentJob.js';
 import { DraftPost } from '../models/DraftPost.js';
 
@@ -21,7 +23,7 @@ export const startAgentPipeline = async ({ draftId, userId, originalCaption, ori
 
         // Call all agents in parallel
         const agentPromises = [
-            callCaptionAgent(draftId, originalCaption, platforms),
+            callCaptionAgent(draftId, originalCaption, platforms, originalImages),
             callImageAgent(draftId, originalImages),
             callVideoAgent(draftId, originalImages),
             callMusicAgent(draftId, originalCaption)
@@ -52,32 +54,80 @@ export const startAgentPipeline = async ({ draftId, userId, originalCaption, ori
 };
 
 // Call Caption Agent
-const callCaptionAgent = async (draftId, caption, platforms) => {
+const callCaptionAgent = async (draftId, caption, platforms, images) => {
     try {
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.captionAgent': 'processing' }
         );
 
-        const response = await axios.post(`${PYTHON_AGENT_BASE_URL}/agents/caption`, {
-            draftId,
-            caption,
-            platforms
-        }, { timeout: 30000 });
+        // Generate captions for each platform
+        const captions = [];
+
+        for (const platform of platforms) {
+            // Use the first image for caption optimization
+            const imageUrl = images && images.length > 0 ? images[0].url : null;
+
+            if (!imageUrl) {
+                console.warn('No image available for caption optimization');
+                continue;
+            }
+
+            // For Instagram optimization
+            if (platform === 'instagram') {
+                const formData = new FormData();
+
+                // Download image and send it as file
+                const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                formData.append('image', Buffer.from(imageResponse.data), {
+                    filename: 'image.jpg',
+                    contentType: 'image/jpeg'
+                });
+                formData.append('intent', caption || 'Generate engaging caption for social media');
+
+                const response = await axios.post(
+                    `${PYTHON_AGENT_BASE_URL}/api/instagram/optimize`,
+                    formData,
+                    {
+                        headers: formData.getHeaders(),
+                        timeout: 30000
+                    }
+                );
+
+                if (response.data.success) {
+                    captions.push({
+                        platform: 'instagram',
+                        text: response.data.caption,
+                        hashtags: response.data.hashtags
+                    });
+                }
+            } else {
+                // For other platforms, use generic caption
+                captions.push({
+                    platform,
+                    text: caption || 'Check out this amazing content!',
+                    hashtags: []
+                });
+            }
+        }
 
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.captionAgent': 'completed' }
         );
 
-        return response.data.captions;
+        return captions;
     } catch (error) {
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.captionAgent': 'failed' }
         );
         console.error('Caption agent error:', error);
-        return [];
+        return [{
+            platform: platforms[0] || 'instagram',
+            text: caption || 'Check out this post!',
+            hashtags: []
+        }];
     }
 };
 
@@ -177,6 +227,12 @@ const updateDraftWithResults = async (draftId, { captions, images, video, music 
         if (captions && captions.length > 0) {
             draft.aiGeneratedCaptions = captions;
             draft.selectedCaption = captions[0]?.text || draft.originalCaption;
+
+            // Extract all hashtags from generated captions
+            const allHashtags = captions.flatMap(c => c.hashtags || []);
+            if (allHashtags.length > 0) {
+                draft.hashtags = [...new Set([...draft.hashtags, ...allHashtags])];
+            }
         }
 
         if (images && images.length > 0) {
