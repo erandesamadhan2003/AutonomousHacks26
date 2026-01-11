@@ -1,45 +1,73 @@
 import axios from 'axios';
 import { SocialAccount } from '../models/SocialAccount.js';
 
-const INSTAGRAM_API_URL = 'https://graph.instagram.com';
+const INSTAGRAM_GRAPH_API = 'https://graph.instagram.com';
 const LINKEDIN_API_URL = 'https://api.linkedin.com/v2';
 
-// Instagram Services
+// Instagram Business Login API
 export const exchangeInstagramCode = async (code, redirectUri) => {
     try {
-        const response = await axios.post('https://api.instagram.com/oauth/access_token', {
-            client_id: process.env.INSTAGRAM_CLIENT_ID,
-            client_secret: process.env.INSTAGRAM_CLIENT_SECRET,
-            grant_type: 'authorization_code',
-            redirect_uri: redirectUri,
-            code
+        // Exchange code for short-lived access token
+        const params = new URLSearchParams();
+        params.append('client_id', process.env.INSTAGRAM_CLIENT_ID);
+        params.append('client_secret', process.env.INSTAGRAM_CLIENT_SECRET);
+        params.append('grant_type', 'authorization_code');
+        params.append('redirect_uri', redirectUri);
+        params.append('code', code);
+
+        const tokenResponse = await axios.post(
+            'https://api.instagram.com/oauth/access_token',
+            params,
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+
+        const shortLivedToken = tokenResponse.data.access_token;
+        const userId = tokenResponse.data.user_id;
+
+        // Exchange for long-lived token (60 days)
+        const longLivedResponse = await axios.get(`${INSTAGRAM_GRAPH_API}/access_token`, {
+            params: {
+                grant_type: 'ig_exchange_token',
+                client_secret: process.env.INSTAGRAM_CLIENT_SECRET,
+                access_token: shortLivedToken
+            }
         });
 
-        return response.data;
+        return {
+            access_token: longLivedResponse.data.access_token,
+            user_id: userId,
+            token_type: 'bearer',
+            expires_in: longLivedResponse.data.expires_in || 5184000 // 60 days
+        };
     } catch (error) {
-        console.error('Instagram code exchange error:', error);
-        throw error;
+        console.error('Instagram code exchange error:', error.response?.data || error);
+        throw new Error(error.response?.data?.error_message || 'Failed to exchange code for token');
     }
 };
 
 export const getInstagramProfile = async (accessToken) => {
     try {
-        const response = await axios.get(`${INSTAGRAM_API_URL}/me`, {
+        // Get user profile from Instagram Graph API
+        const response = await axios.get(`${INSTAGRAM_GRAPH_API}/me`, {
             params: {
-                fields: 'id,username,account_type,media_count',
+                fields: 'user_id,username,account_type,profile_picture_url,followers_count,follows_count,media_count,name',
                 access_token: accessToken
             }
         });
 
         return {
-            id: response.data.id,
+            id: response.data.user_id || response.data.id,
             username: response.data.username,
+            name: response.data.name,
+            profilePicture: response.data.profile_picture_url,
             accountType: response.data.account_type,
+            followersCount: response.data.followers_count,
+            followsCount: response.data.follows_count,
             mediaCount: response.data.media_count
         };
     } catch (error) {
-        console.error('Get Instagram profile error:', error);
-        throw error;
+        console.error('Get Instagram profile error:', error.response?.data || error);
+        throw new Error(error.response?.data?.error?.message || 'Failed to get Instagram profile');
     }
 };
 

@@ -2,11 +2,14 @@ import { useState } from "react";
 import { connectAccount } from "@/services/social.service";
 
 const OAUTH_CONFIG = {
+    // Instagram Business Login API
     instagram: {
         clientId: import.meta.env.VITE_INSTAGRAM_CLIENT_ID,
-        redirectUri: `${window.location.origin}/auth/callback`,
-        scope: "user_profile,user_media",
-        authUrl: "https://api.instagram.com/oauth/authorize",
+        // Use ngrok URL for Instagram (they don't allow localhost)
+        redirectUri: import.meta.env.VITE_INSTAGRAM_REDIRECT_URI || `${window.location.origin}/auth/callback`,
+        // Instagram Business Login permissions
+        scope: "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish",
+        authUrl: "https://www.instagram.com/oauth/authorize",
     },
     facebook: {
         clientId: import.meta.env.VITE_FACEBOOK_APP_ID,
@@ -42,8 +45,14 @@ export const useOAuthFlow = () => {
                 throw new Error(`Platform ${platform} is not supported`);
             }
 
-            // Store platform in session storage for callback
+            // Store platform and auth token in session storage for callback
             sessionStorage.setItem("oauth_platform", platform);
+            
+            // Also store the auth token so we can restore it after redirect
+            const authToken = localStorage.getItem("token");
+            if (authToken) {
+                sessionStorage.setItem("oauth_auth_token", authToken);
+            }
 
             // Build OAuth URL
             const params = new URLSearchParams({

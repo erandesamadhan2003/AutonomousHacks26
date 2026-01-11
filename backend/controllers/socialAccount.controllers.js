@@ -26,6 +26,7 @@ export const connectAccount = async (req, res) => {
             const tokenData = await exchangeInstagramCode(code, redirectUri);
             accessToken = tokenData.access_token;
             profile = await getInstagramProfile(accessToken);
+            console.log('Instagram profile received:', JSON.stringify(profile, null, 2));
         } else if (platform === 'linkedin') {
             const tokenData = await exchangeLinkedInCode(code, redirectUri);
             accessToken = tokenData.access_token;
@@ -47,6 +48,7 @@ export const connectAccount = async (req, res) => {
         if (account) {
             // Update existing account
             account.accessToken = accessToken;
+            account.username = profile.username;
             account.profile = profile;
             account.connected = true;
             account.lastSyncedAt = new Date();
@@ -56,6 +58,7 @@ export const connectAccount = async (req, res) => {
                 userId,
                 platform,
                 platformUserId: profile.id,
+                username: profile.username,
                 accessToken,
                 profile,
                 connected: true,
@@ -89,7 +92,7 @@ export const getAccounts = async (req, res) => {
     try {
         const userId = req.user._id;
 
-        const accounts = await SocialAccount.find({ userId, isDeleted: false })
+        const accounts = await SocialAccount.find({ userId, isActive: true })
             .select('-accessToken -refreshToken -__v')
             .sort({ createdAt: -1 });
 

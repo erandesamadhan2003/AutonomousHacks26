@@ -16,9 +16,25 @@ import PreferencesPage from "./pages/PreferencesPage";
 import ProfilePage from "./pages/ProfilePage";
 
 const ProtectedRoute = ({ children }) => {
-  const { token, isAuthenticated } = useSelector((state) => state.auth);
+  const { token, isAuthenticated, loading } = useSelector((state) => state.auth);
 
-  if (!token || !isAuthenticated) {
+  // If we have a token but auth check is still loading, show loading state
+  if (token && !isAuthenticated && loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
+
+  // If we have a token but haven't verified yet, allow access temporarily
+  // The useAuth hook will verify the token
+  if (token && !isAuthenticated && !loading) {
+    // Token exists but not authenticated yet - let useAuth verify it
+    return children;
+  }
+
+  if (!token) {
     return <Navigate to="/login" replace />;
   }
 
