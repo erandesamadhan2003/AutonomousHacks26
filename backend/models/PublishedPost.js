@@ -77,7 +77,6 @@ const publishedPostSchema = new mongoose.Schema({
 });
 
 publishedPostSchema.index({ userId: 1, publishedAt: -1 });
-publishedPostSchema.index({ platformPostId: 1 });
 
 // Add methods before module.exports
 publishedPostSchema.methods.updateMetrics = async function (newMetrics) {

@@ -1,5 +1,5 @@
 import express from 'express';
-import { getProfile, googleCallBack, login, logout, register } from '../controllers/auth.controllers.js';
+import { getProfile, googleCallBack, login, logout, register, instagramCallback } from '../controllers/auth.controllers.js';
 import passport from 'passport';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 
@@ -12,6 +12,8 @@ router.get('/google', passport.authenticate('google', {
     prompt: 'select_account'  
 }));
 router.get('/google/callback', passport.authenticate('google', { failureRedirect: `${process.env.FRONTEND_URL}/login`, session: false }), googleCallBack);
+// Public Instagram OAuth callback - no auth required
+router.post('/instagram/callback', instagramCallback);
 router.get('/profile', authMiddleware, getProfile);
 router.post('/logout', authMiddleware, logout);
 

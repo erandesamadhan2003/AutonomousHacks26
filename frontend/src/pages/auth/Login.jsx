@@ -1,11 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
-import { useState } from "react";
+import { useOAuthFlow } from "@/hooks/useOAuthFlow";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 
 export const Login = () => {
   const { login, googleLoginHandler, loading, error, clearAuthError } =
     useAuth();
+  const { handleCallback: handleSocialCallback } = useOAuthFlow();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [isProcessingOAuth, setIsProcessingOAuth] = useState(false);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -14,13 +20,43 @@ export const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    clearAuthError(); // Clear error only when submitting
-    try {
+    clearAuthError();
+      try {
+        const pendingCode = sessionStorage.getItem("pending_oauth_code");
+        const pendingPlatform = sessionStorage.getItem("pending_oauth_platform");
+
       await login(formData);
+
+      if (pendingCode && pendingPlatform) {
+        setIsProcessingOAuth(true);
+        try {
+          await handleSocialCallback(pendingCode);
+
+          // Clear pending OAuth data
+          sessionStorage.removeItem("pending_oauth_code");
+          sessionStorage.removeItem("pending_oauth_platform");
+
+          // Redirect to social accounts page
+            setTimeout(() => navigate("/social-accounts", { replace: true }), 500);
+        } catch (oauthError) {
+          console.error("Failed to connect social account:", oauthError);
+            // Still redirect to dashboard
+            setTimeout(() => navigate("/dashboard", { replace: true }), 500);
+        }
+        } else {
+          // Normal login - will navigate to dashboard via useAuth
+      }
     } catch (err) {
       console.error("Login failed:", err);
     }
   };
+
+  useEffect(() => {
+    // Check if coming from OAuth pending state
+    if (searchParams.get("oauth_pending")) {
+      clearAuthError();
+    }
+  }, [searchParams]);
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
@@ -35,6 +71,12 @@ export const Login = () => {
           </div>
         )}
 
+        {isProcessingOAuth && (
+          <div className="mb-4 p-3 text-sm text-blue-500 bg-blue-50 rounded-md text-center">
+            Connecting social account...
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
             type="email"
@@ -44,6 +86,7 @@ export const Login = () => {
               setFormData({ ...formData, email: e.target.value })
             }
             required
+            disabled={isProcessingOAuth}
           />
 
           <Input
@@ -54,10 +97,15 @@ export const Login = () => {
               setFormData({ ...formData, password: e.target.value })
             }
             required
+            disabled={isProcessingOAuth}
           />
 
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Logging in..." : "Log In"}
+          <Button 
+            type="submit" 
+            disabled={loading || isProcessingOAuth} 
+            className="w-full"
+          >
+            {isProcessingOAuth ? "Connecting account..." : loading ? "Logging in..." : "Log In"}
           </Button>
 
           <div className="relative my-2">
@@ -75,10 +123,10 @@ export const Login = () => {
             type="button"
             variant="outline"
             onClick={googleLoginHandler}
-            disabled={loading}
+            disabled={loading || isProcessingOAuth}
             className="w-full"
           >
-            {loading ? "Processing..." : "Log In with Google"}
+            {loading || isProcessingOAuth ? "Processing..." : "Log In with Google"}
           </Button>
         </form>
 

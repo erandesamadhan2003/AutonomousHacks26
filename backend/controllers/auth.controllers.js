@@ -143,4 +143,32 @@ export const getProfile = async (req, res) => {
     });
 }
 
+export const instagramCallback = async (req, res) => {
+    try {
+        const { code, redirectUri } = req.body;
+
+        if (!code) {
+            return res.status(400).json({
+                success: false,
+                message: 'No code provided'
+            });
+        }
+
+        // Return code to be handled by frontend after user authenticates
+        res.json({
+            success: true,
+            message: 'OAuth code received',
+            code,
+            redirectUri
+        });
+    } catch (error) {
+        console.error('Instagram callback error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to process Instagram callback'
+        });
+    }
+};
+
+
 
