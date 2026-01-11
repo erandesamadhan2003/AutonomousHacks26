@@ -118,7 +118,7 @@ export const getAccountById = async (req, res) => {
         const account = await SocialAccount.findOne({
             _id: id,
             userId,
-            isDeleted: false
+            isActive: true
         }).select('-accessToken -refreshToken -__v');
 
         if (!account) {
@@ -150,7 +150,7 @@ export const disconnectAccount = async (req, res) => {
         const account = await SocialAccount.findOne({
             _id: id,
             userId,
-            isDeleted: false
+            isActive: true
         });
 
         if (!account) {
@@ -160,7 +160,7 @@ export const disconnectAccount = async (req, res) => {
             });
         }
 
-        account.isDeleted = true;
+        account.isActive = false;
         account.connected = false;
         await account.save();
 
@@ -186,7 +186,7 @@ export const refreshAccountData = async (req, res) => {
         const account = await SocialAccount.findOne({
             _id: id,
             userId,
-            isDeleted: false
+            isActive: true
         });
 
         if (!account) {
