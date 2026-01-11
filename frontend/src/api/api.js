@@ -20,52 +20,45 @@ export const DASHBOARD_URL = {
 };
 
 const api = axios.create({
-    baseURL: BASE_URL,
-    timeout: 5000,
-})
+    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
+    withCredentials: true,
+    headers: {
+        'Content-Type': 'application/json',
+    },
+});
 
+// Request interceptor
 api.interceptors.request.use(
     (config) => {
         const token = localStorage.getItem('token');
-
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
 
+        console.log(`📡 API Request: ${config.method.toUpperCase()} ${config.url}`);
+        if (config.data instanceof FormData) {
+            console.log('📦 FormData payload');
+        }
         return config;
     },
     (error) => {
+        console.error('❌ Request error:', error);
         return Promise.reject(error);
     }
 );
 
+// Response interceptor
 api.interceptors.response.use(
     (response) => {
+        console.log(`✅ API Response: ${response.status} ${response.config.url}`);
         return response;
     },
     (error) => {
-        if (error.response) {
-            switch (error.response.status) {
-                case 401:
-                    localStorage.removeItem('token');
-                    window.location.href = '/login';
-                    break;
-                case 403:
-                    console.error('Access forbidden');
-                    break;
-                case 404:
-                    console.error('Resource not found');
-                    break;
-                case 500:
-                    console.error('Server error');
-                    break;
-                default:
-                    console.error('An error occurred:', error.response.data.message);
-            }
-        } else if (error.request) {
-            console.error('Network error - no response from server');
-        } else {
-            console.error('Error:', error.message);
+        console.error('❌ API Error:', error.response?.status, error.response?.data?.message || error.message);
+
+        if (error.response?.status === 401) {
+            localStorage.removeItem('token');
+            window.location.href = '/login';
         }
 
         return Promise.reject(error);

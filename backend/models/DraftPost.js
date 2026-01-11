@@ -6,141 +6,102 @@ const draftPostSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
-    socialAccountId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'SocialAccount',
-        required: true
-    },
-    platform: {
+    originalCaption: {
         type: String,
-        enum: ['instagram', 'linkedin', 'facebook', 'twitter'],
-        required: true
+        default: ''
     },
-    status: {
-        type: String,
-        enum: ['draft', 'processing', 'ready', 'scheduled', 'published', 'failed'],
-        default: 'draft'
-    },
-
-    // User Input
-    userDescription: {
-        type: String,
-        required: true
-    },
-    uploadedImages: [{
+    originalImages: [{
         url: String,
-        filename: String,
-        size: Number
+        publicId: String,
+        format: String,
+        width: Number,
+        height: Number
     }],
+    platforms: [{
+        type: String,
+        enum: ['instagram', 'facebook', 'linkedin', 'twitter'],
+        default: ['instagram']
+    }],
+    hashtags: [String],
 
-    // Agent Generated Content
-    processedImages: [{
-        url: String,
-        variant: String, // 'original', 'enhanced', 'filtered'
-    }],
-    generatedCaptions: [{
+    // AI Generated Content
+    aiGeneratedCaptions: [{
+        platform: String,
         text: String,
-        tone: String, // 'professional', 'casual', 'creative'
-        score: Number // AI confidence score
+        hashtags: [String]
     }],
-    selectedCaption: {
-        type: String
-    },
-    hashtags: [{
-        tag: String,
-        relevanceScore: Number
+    aiGeneratedImages: [{
+        id: Number,
+        platform: String,
+        dimensions: {
+            width: Number,
+            height: Number
+        },
+        variants: [{
+            variant: String,
+            name: String,
+            url: String,
+            width: Number,
+            height: Number
+        }],
+        variantCount: Number
     }],
-    generatedVideo: {
+    aiGeneratedVideo: {
         url: String,
-        duration: Number,
-        thumbnail: String
+        format: String,
+        size: String,
+        generatedAt: Date,
+        sourceImage: String
     },
     musicSuggestions: [{
         title: String,
         artist: String,
+        album: String,
         mood: String,
-        spotifyUrl: String,
-        instagramAudioId: String
+        genre: String,
+        previewUrl: String,
+        artwork: String,
+        releaseDate: String,
+        trackTime: Number,
+        iTunesUrl: String
     }],
+
+    // Selected Content (what user chooses to publish)
+    selectedCaption: String,
+    selectedImages: [{
+        url: String,
+        publicId: String
+    }],
+    selectedVideo: {
+        url: String,
+        format: String
+    },
     selectedMusic: {
-        type: mongoose.Schema.Types.Mixed
+        title: String,
+        artist: String,
+        url: String
     },
 
-    // Scheduling
-    scheduledAt: {
-        type: Date
-    },
-    publishedAt: {
-        type: Date
+    scheduledFor: Date,
+    publishedAt: Date,
+
+    status: {
+        type: String,
+        enum: ['processing', 'ready', 'scheduled', 'published', 'failed'],
+        default: 'processing'
     },
 
-    // Agent Processing Status
-    agentStatus: {
-        imageProcessing: {
-            status: String, // 'pending', 'processing', 'completed', 'failed'
-            completedAt: Date,
-            error: String
-        },
-        captionGeneration: {
-            status: String,
-            completedAt: Date,
-            error: String
-        },
-        videoGeneration: {
-            status: String,
-            completedAt: Date,
-            error: String
-        },
-        musicSuggestion: {
-            status: String,
-            completedAt: Date,
-            error: String
-        }
-    },
-
-    // Publishing
-    publishedPostId: {
-        type: String // Platform's post ID
-    },
-    publishError: {
-        type: String
+    isDeleted: {
+        type: Boolean,
+        default: false
     }
 
 }, {
     timestamps: true
 });
 
+// Indexes
 draftPostSchema.index({ userId: 1, status: 1 });
-draftPostSchema.index({ scheduledAt: 1 });
-
-// Add methods before module.exports
-draftPostSchema.methods.updateAgentStatus = async function (agentType, status, error = null) {
-    if (!this.agentStatus[agentType]) {
-        this.agentStatus[agentType] = {};
-    }
-    this.agentStatus[agentType].status = status;
-    if (status === 'completed') {
-        this.agentStatus[agentType].completedAt = new Date();
-    }
-    if (error) {
-        this.agentStatus[agentType].error = error;
-    }
-    await this.save();
-    return this;
-};
-
-draftPostSchema.methods.isReadyToPublish = function () {
-    const agents = ['imageProcessing', 'captionGeneration', 'videoGeneration', 'musicSuggestion'];
-    return agents.every(agent =>
-        this.agentStatus[agent]?.status === 'completed' ||
-        this.agentStatus[agent]?.status === 'failed'
-    );
-};
-
-draftPostSchema.methods.getProgress = function () {
-    const agents = ['imageProcessing', 'captionGeneration', 'videoGeneration', 'musicSuggestion'];
-    const completed = agents.filter(agent => this.agentStatus[agent]?.status === 'completed').length;
-    return Math.round((completed / agents.length) * 100);
-};
+draftPostSchema.index({ userId: 1, createdAt: -1 });
 
 export const DraftPost = mongoose.model('DraftPost', draftPostSchema);

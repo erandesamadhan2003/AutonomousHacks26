@@ -453,32 +453,106 @@ const updateDraftWithResults = async (draftId, { captions, images, video, music 
                 draft.hashtags = [...new Set([...draft.hashtags, ...allHashtags])];
             }
             console.log(`   ✓ Captions: ${captions.length} added`);
+
+            // Log generated captions
+            console.log('\n   📝 GENERATED CAPTIONS:');
+            captions.forEach((cap, idx) => {
+                console.log(`   ${idx + 1}. Platform: ${cap.platform}`);
+                console.log(`      Caption: ${cap.text.substring(0, 100)}${cap.text.length > 100 ? '...' : ''}`);
+                console.log(`      Hashtags: ${cap.hashtags?.join(', ') || 'None'}`);
+            });
         }
 
         if (images && images.length > 0) {
             draft.aiGeneratedImages = images;
-            console.log(`   ✓ Images: ${images.length} processed versions`);
+            console.log(`\n   ✓ Images: ${images.length} processed versions`);
+
+            // Log image variants with URLs
+            console.log('\n   🎨 PROCESSED IMAGE VARIANTS:');
+            images.forEach((img, idx) => {
+                console.log(`   Image ${idx + 1}:`);
+                console.log(`      Platform: ${img.platform}`);
+                console.log(`      Dimensions: ${img.dimensions?.width}x${img.dimensions?.height}`);
+                console.log(`      Variants: ${img.variantCount}`);
+                img.variants?.forEach((variant, vIdx) => {
+                    console.log(`        ${vIdx + 1}. ${variant.name}`);
+                    console.log(`           URL: ${variant.url.substring(0, 100)}...`);
+                });
+            });
         }
 
         if (video) {
             draft.aiGeneratedVideo = video;
-            console.log(`   ✓ Video: Generated (${video.size} KB)`);
+            console.log(`\n   ✓ Video: Generated (${video.size} KB)`);
+
+            // Log complete video details
+            console.log('\n   🎬 GENERATED VIDEO DETAILS:');
+            console.log(`      Format: ${video.format}`);
+            console.log(`      Size: ${video.size} KB`);
+            console.log(`      Generated At: ${video.generatedAt}`);
+            console.log(`      Source Image: ${video.sourceImage}`);
+            console.log(`      Video URL (first 200 chars): ${video.url.substring(0, 200)}...`);
+            console.log(`      Full URL length: ${video.url.length} characters`);
         }
 
         if (music && music.length > 0) {
             draft.musicSuggestions = music;
-            console.log(`   ✓ Music: ${music.length} suggestions`);
+            console.log(`\n   ✓ Music: ${music.length} suggestions`);
+
+            // Log music suggestions
+            console.log('\n   🎵 MUSIC SUGGESTIONS:');
+            music.forEach((track, idx) => {
+                console.log(`   ${idx + 1}. ${track.title} - ${track.artist}`);
+                console.log(`      Genre: ${track.genre} | Mood: ${track.mood}`);
+                if (track.previewUrl) {
+                    console.log(`      Preview: ${track.previewUrl}`);
+                }
+                if (track.iTunesUrl) {
+                    console.log(`      iTunes: ${track.iTunesUrl}`);
+                }
+            });
         }
 
         draft.status = 'ready';
         await draft.save();
 
-        console.log(`   ✓ Draft status: ${draft.status}`);
-        console.log('✅ DRAFT UPDATE COMPLETE');
-        console.log('─'.repeat(80));
+        console.log(`\n   ✓ Draft status: ${draft.status}`);
+
+        // Log complete draft summary
+        console.log('\n   📊 COMPLETE DRAFT SUMMARY:');
+        console.log(`      Draft ID: ${draft._id}`);
+        console.log(`      User ID: ${draft.userId}`);
+        console.log(`      Status: ${draft.status}`);
+        console.log(`      Platforms: ${draft.platforms.join(', ')}`);
+        console.log(`      Original Images: ${draft.originalImages.length}`);
+
+        // Log original image URLs
+        if (draft.originalImages.length > 0) {
+            console.log('\n   📸 ORIGINAL IMAGES (Cloudinary URLs):');
+            draft.originalImages.forEach((img, idx) => {
+                console.log(`      ${idx + 1}. ${img.url}`);
+                console.log(`         Public ID: ${img.publicId}`);
+                console.log(`         Format: ${img.format}`);
+                console.log(`         Dimensions: ${img.width}x${img.height}`);
+            });
+        }
+
+        console.log('\n✅ DRAFT UPDATE COMPLETE');
+        console.log('━'.repeat(80));
+
+        // Log access instructions
+        console.log('\n📌 HOW TO ACCESS THIS CONTENT:');
+        console.log(`   1. Frontend: GET /api/posts/draft/${draft._id}`);
+        console.log(`   2. Direct DB query: db.draftposts.findOne({_id: ObjectId("${draft._id}")})`);
+        console.log(`   3. Video URL is stored in: draft.aiGeneratedVideo.url`);
+        console.log(`   4. Images are in: draft.originalImages[] (Cloudinary)`);
+        console.log(`   5. AI processed images: draft.aiGeneratedImages[]`);
+        console.log('━'.repeat(80));
+
     } catch (error) {
-        console.error('❌ DRAFT UPDATE FAILED');
+        console.error('\n❌ DRAFT UPDATE FAILED');
         console.error('   Error:', error.message);
+        console.error('   Stack:', error.stack);
         console.log('─'.repeat(80));
     }
 };

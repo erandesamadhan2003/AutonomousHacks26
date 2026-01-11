@@ -73,34 +73,72 @@ export default function CreatePost() {
   };
 
   const handleNext = async () => {
-    if (currentStep === 4) {
+    if (currentStep === 3) {
+      // Submit the form after step 3 to create draft and trigger AI
+      await handleCreateDraft();
+    } else if (currentStep === 4) {
       await handlePublish();
     } else {
       setCurrentStep(currentStep + 1);
     }
   };
 
-  const handlePublish = async () => {
+  const handleCreateDraft = async () => {
     try {
       const formData = new FormData();
 
-      // Add images
+      // Add images - use the actual file objects
+      if (images.length === 0) {
+        setError("Please upload at least one image");
+        return;
+      }
+
       images.forEach((img) => {
         formData.append("images", img.file);
       });
 
       // Add form data
-      formData.append("caption", selectedCaption);
-      formData.append("hashtags", selectedHashtags.join(","));
+      formData.append("caption", description.text);
       formData.append("platforms", selectedPlatforms.join(","));
-      if (selectedMusic) {
-        formData.append("musicId", selectedMusic.id);
+
+      if (description.hashtags) {
+        formData.append("hashtags", description.hashtags);
       }
 
+      console.log("📤 Creating draft and starting AI processing...");
       setIsProcessing(true);
-      await create(formData);
+
+      const response = await create(formData);
+
+      console.log("✅ Draft created:", response);
+
+      // Move to step 4 to show processing status
+      setCurrentStep(4);
     } catch (err) {
-      console.error("Error publishing:", err);
+      console.error("❌ Error creating draft:", err);
+      setIsProcessing(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    try {
+      if (!draftId) {
+        setError("No draft to publish");
+        return;
+      }
+
+      const publishData = {
+        draftId: draftId,
+        platforms: selectedPlatforms,
+      };
+
+      console.log("📤 Publishing post...");
+      // In a real app, you'd call publishPost from post.service
+      // await publishPost(publishData);
+
+      setShowSuccess(true);
+    } catch (err) {
+      console.error("❌ Error publishing:", err);
     }
   };
 

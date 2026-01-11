@@ -1,5 +1,7 @@
 import express from 'express';
 import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { DraftPost } from '../models/DraftPost.js';
 import {
     createDraft,
@@ -16,24 +18,38 @@ import { authMiddleware } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
+// Ensure uploads directory exists
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log('✓ Created uploads directory');
+}
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads/');
+        cb(null, uploadsDir);
     },
     filename: (req, file, cb) => {
-        cb(null, `${Date.now()}-${file.originalname}`);
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
     }
 });
 
 const upload = multer({
     storage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB per file
+        files: 10 // Maximum 10 files
+    },
     fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
+        const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+
+        if (allowedMimes.includes(file.mimetype)) {
             cb(null, true);
         } else {
-            cb(new Error('Only images and videos are allowed'));
+            cb(new Error(`Invalid file type: ${file.mimetype}. Only images are allowed.`));
         }
     }
 });
@@ -47,14 +63,31 @@ router.use((req, res, next) => {
     console.log(`📍 POST ROUTE: ${req.method} ${req.path}`);
     console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
     console.log(`👤 User ID: ${req.user?._id || 'Not authenticated'}`);
-    console.log(`📦 Body:`, Object.keys(req.body).length > 0 ? req.body : 'Empty');
-    console.log(`📁 Files:`, req.files?.length || 0);
     console.log(`${'='.repeat(80)}\n`);
     next();
 });
 
-// Draft routes
-router.post('/draft', upload.array('images', 10), createDraft);
+// Draft routes with detailed logging after multer processes the request
+router.post('/draft',
+    upload.array('images', 10),
+    (req, res, next) => {
+        console.log('📝 Request Processed by Multer:');
+        console.log(`   Caption: ${req.body?.caption || 'Not provided'}`);
+        console.log(`   Platforms: ${req.body?.platforms || 'Not provided'}`);
+        console.log(`   Hashtags: ${req.body?.hashtags || 'Not provided'}`);
+        console.log(`   Files: ${req.files?.length || 0}`);
+
+        if (req.files && req.files.length > 0) {
+            req.files.forEach((file, idx) => {
+                console.log(`   File ${idx + 1}: ${file.originalname} (${(file.size / 1024).toFixed(2)} KB)`);
+            });
+        }
+        console.log('');
+        next();
+    },
+    createDraft
+);
+
 router.get('/drafts', getDrafts);
 router.get('/draft/:id', getDraftById);
 

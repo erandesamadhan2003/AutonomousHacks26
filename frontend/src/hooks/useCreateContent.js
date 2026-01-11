@@ -1,5 +1,5 @@
+import { api } from "@/api/api";
 import { useState } from "react";
-import { createDraft } from "@/services/post.service";
 
 export const useCreateContent = () => {
     const [loading, setLoading] = useState(false);
@@ -10,13 +10,31 @@ export const useCreateContent = () => {
     const create = async (formData) => {
         setLoading(true);
         setError(null);
+
         try {
-            const response = await createDraft(formData);
-            setDraftId(response.data.draftId);
-            setJobId(response.data.jobId);
-            return response;
+            console.log('🚀 Creating draft...');
+            console.log('FormData contents:');
+            for (let [key, value] of formData.entries()) {
+                console.log(`  ${key}:`, value instanceof File ? `File: ${value.name}` : value);
+            }
+
+            const response = await api.post('/posts/draft', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            console.log('✅ Draft created successfully:', response.data);
+
+            setDraftId(response.data.data.draftId);
+            setJobId(response.data.data.jobId);
+
+            return response.data;
         } catch (err) {
-            setError(err.response?.data?.message || "Failed to create draft");
+            console.error('❌ Create draft error:', err);
+            console.error('Response:', err.response?.data);
+            const errorMessage = err.response?.data?.message || err.message || "Failed to create draft";
+            setError(errorMessage);
             throw err;
         } finally {
             setLoading(false);
@@ -27,6 +45,7 @@ export const useCreateContent = () => {
         setDraftId(null);
         setJobId(null);
         setError(null);
+        setLoading(false);
     };
 
     return {

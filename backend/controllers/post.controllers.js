@@ -154,18 +154,51 @@ export const getDrafts = async (req, res) => {
     }
 };
 
-// Get Draft By ID - Enhanced to show all AI-generated content
+// Get Draft By ID - Enhanced with detailed logging
 export const getDraftById = async (req, res) => {
     try {
         const { id } = req.params;
         const userId = req.user._id;
 
+        console.log(`\n📖 FETCHING DRAFT: ${id}`);
+        console.log(`   Requested by user: ${userId}`);
+
         const draft = await DraftPost.findOne({ _id: id, userId, isDeleted: false });
 
         if (!draft) {
+            console.log('   ❌ Draft not found');
             return res.status(404).json({
                 success: false,
                 message: 'Draft not found'
+            });
+        }
+
+        console.log('   ✓ Draft found');
+        console.log(`   Status: ${draft.status}`);
+
+        // Log all available content
+        if (draft.originalImages?.length > 0) {
+            console.log(`\n   📸 Original Images (${draft.originalImages.length}):`);
+            draft.originalImages.forEach((img, i) => {
+                console.log(`      ${i + 1}. ${img.url}`);
+            });
+        }
+
+        if (draft.aiGeneratedVideo) {
+            console.log(`\n   🎬 Generated Video:`);
+            console.log(`      Format: ${draft.aiGeneratedVideo.format}`);
+            console.log(`      Size: ${draft.aiGeneratedVideo.size} KB`);
+            console.log(`      URL Preview: ${draft.aiGeneratedVideo.url.substring(0, 100)}...`);
+        }
+
+        if (draft.aiGeneratedCaptions?.length > 0) {
+            console.log(`\n   ✍️  AI Captions: ${draft.aiGeneratedCaptions.length} generated`);
+        }
+
+        if (draft.musicSuggestions?.length > 0) {
+            console.log(`\n   🎵 Music Suggestions: ${draft.musicSuggestions.length} tracks`);
+            draft.musicSuggestions.slice(0, 3).forEach((track, i) => {
+                console.log(`      ${i + 1}. ${track.title} - ${track.artist}`);
             });
         }
 
@@ -184,6 +217,8 @@ export const getDraftById = async (req, res) => {
             },
             processingComplete: draft.status === 'ready'
         };
+
+        console.log(`   ✓ Returning draft data to client\n`);
 
         res.status(200).json({
             success: true,
