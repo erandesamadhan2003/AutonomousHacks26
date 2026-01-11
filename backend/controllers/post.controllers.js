@@ -115,10 +115,13 @@ export const getDrafts = async (req, res) => {
         const userId = req.user._id;
         const { status, platform, search, page = 1, limit = 10 } = req.query;
 
+        console.log(`\n📋 FETCHING DRAFTS for user: ${userId}`);
+        console.log(`   Filters: status=${status}, platform=${platform}, search=${search}`);
+
         const query = { userId, isDeleted: false };
 
-        if (status) query.status = status;
-        if (platform) query.platforms = platform;
+        if (status && status !== 'all') query.status = status;
+        if (platform && platform !== 'all') query.platforms = platform;
         if (search) {
             query.$or = [
                 { originalCaption: { $regex: search, $options: 'i' } },
@@ -135,6 +138,20 @@ export const getDrafts = async (req, res) => {
             .limit(parseInt(limit))
             .select('-__v');
 
+        console.log(`   ✓ Found ${drafts.length} drafts (Total: ${total})`);
+
+        // Log draft details
+        if (drafts.length > 0) {
+            console.log('\n   📊 Draft Summary:');
+            drafts.forEach((draft, idx) => {
+                console.log(`   ${idx + 1}. ID: ${draft._id}`);
+                console.log(`      Status: ${draft.status}`);
+                console.log(`      Images: ${draft.originalImages?.length || 0}`);
+                console.log(`      Video: ${draft.aiGeneratedVideo ? '✓' : '✗'}`);
+                console.log(`      AI Captions: ${draft.aiGeneratedCaptions?.length || 0}`);
+            });
+        }
+
         res.status(200).json({
             success: true,
             data: drafts,
@@ -146,7 +163,7 @@ export const getDrafts = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Get drafts error:', error);
+        console.error('❌ Get drafts error:', error);
         res.status(500).json({
             success: false,
             message: error.message || 'Failed to fetch drafts'

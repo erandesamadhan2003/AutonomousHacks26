@@ -17,10 +17,13 @@ export const createDraft = async (formData) => {
 
 export const getDrafts = async (filters = {}) => {
     try {
+        console.log('📋 Fetching drafts with filters:', filters);
         const { data } = await api.get(`${POST_BASE}/drafts`, { params: filters });
+        console.log('✅ Drafts fetched:', data);
         return data;
     } catch (error) {
-        console.error("Get drafts error:", error);
+        console.error("❌ Get drafts error:", error);
+        console.error("Response:", error.response?.data);
         throw error;
     }
 };

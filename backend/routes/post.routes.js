@@ -88,7 +88,8 @@ router.post('/draft',
     createDraft
 );
 
-router.get('/drafts', getDrafts);
+// FIX: Change the order - plural routes should come before singular routes
+router.get('/drafts', getDrafts);  // This must come before /draft/:id
 router.get('/draft/:id', getDraftById);
 
 // Get video URL from draft

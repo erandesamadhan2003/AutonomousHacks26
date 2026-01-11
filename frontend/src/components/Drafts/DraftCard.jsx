@@ -17,8 +17,18 @@ export const DraftCard = ({
   getStatusColor,
   getStatusBg,
 }) => {
+  // Show video thumbnail if available, otherwise show image
   const thumbnail =
-    draft.originalImages?.[0]?.url || draft.aiGeneratedImages?.[0]?.url;
+    draft.aiGeneratedVideo?.url ||
+    draft.originalImages?.[0]?.url ||
+    draft.aiGeneratedImages?.[0]?.variants?.[0]?.url;
+
+  const hasVideo = !!draft.aiGeneratedVideo;
+  const hasAiContent =
+    draft.aiGeneratedCaptions?.length > 0 ||
+    draft.aiGeneratedImages?.length > 0 ||
+    hasVideo ||
+    draft.musicSuggestions?.length > 0;
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -37,11 +47,41 @@ export const DraftCard = ({
         {/* Thumbnail */}
         <div className="relative w-full h-32 bg-linear-to-br from-gray-100 to-gray-200 overflow-hidden">
           {thumbnail ? (
-            <img
-              src={thumbnail}
-              alt={draft.originalCaption}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            />
+            <>
+              {hasVideo && draft.aiGeneratedVideo.url.includes("base64") ? (
+                <img
+                  src={draft.aiGeneratedVideo.url}
+                  alt="Generated video"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+              ) : thumbnail.includes("base64") ? (
+                <img
+                  src={thumbnail}
+                  alt={draft.originalCaption}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+              ) : (
+                <img
+                  src={thumbnail}
+                  alt={draft.originalCaption}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+              )}
+
+              {/* Video indicator */}
+              {hasVideo && (
+                <div className="absolute top-2 left-2 px-2 py-1 bg-black/70 rounded-full text-white text-xs font-medium flex items-center gap-1">
+                  🎬 Video
+                </div>
+              )}
+
+              {/* AI badge */}
+              {hasAiContent && (
+                <div className="absolute bottom-2 right-2 px-2 py-1 bg-purple-500/90 rounded-full text-white text-xs font-medium flex items-center gap-1">
+                  ✨ AI Enhanced
+                </div>
+              )}
+            </>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <div className="text-3xl">📸</div>

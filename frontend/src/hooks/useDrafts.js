@@ -19,11 +19,22 @@ export const useDrafts = (initialFilters = {}) => {
         setLoading(true);
         setError(null);
         try {
+            console.log('🔄 Fetching drafts with filters:', filters);
             const response = await getDrafts(filters);
-            setDrafts(response.data);
-            setPagination(response.pagination);
+            console.log('📦 Drafts response:', response);
+
+            if (response.success) {
+                setDrafts(response.data || []);
+                setPagination(response.pagination);
+                console.log(`✅ Loaded ${response.data?.length || 0} drafts`);
+            } else {
+                setError('Failed to fetch drafts');
+                setDrafts([]);
+            }
         } catch (err) {
-            setError(err.response?.data?.message || "Failed to fetch drafts");
+            console.error('❌ Fetch drafts error:', err);
+            setError(err.response?.data?.message || err.message || "Failed to fetch drafts");
+            setDrafts([]);
         } finally {
             setLoading(false);
         }

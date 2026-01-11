@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -43,6 +43,16 @@ export default function DraftsPage() {
     remove,
     publish,
   } = useDrafts(filters);
+
+  // Log when drafts change
+  useEffect(() => {
+    console.log("📋 Drafts updated:", {
+      count: drafts?.length || 0,
+      loading,
+      error,
+      pagination,
+    });
+  }, [drafts, loading, error, pagination]);
 
   const handleFilterChange = (newFilters) => {
     setFilters((prev) => ({ ...prev, ...newFilters, page: 1 }));
@@ -131,6 +141,7 @@ export default function DraftsPage() {
             </h1>
             <p className="text-gray-600 mt-1">
               {pagination?.total || 0} draft{pagination?.total !== 1 ? "s" : ""}
+              {loading && " (Loading...)"}
             </p>
           </div>
           <div className="flex gap-2">
@@ -196,7 +207,7 @@ export default function DraftsPage() {
               </Card>
             ))}
           </div>
-        ) : drafts.length > 0 ? (
+        ) : drafts && drafts.length > 0 ? (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {drafts.map((draft) => (

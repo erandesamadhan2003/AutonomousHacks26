@@ -1,2 +1,18 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+
+/* Make dialog overlay solid white/light gray instead of transparent */
+[data-radix-dialog-overlay] {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+}
+
+/* Ensure dialog content has solid background */
+[data-radix-dialog-content] {
+  background-color: white !important;
+}
+
+/* Remove any transparent backgrounds from cards in dialogs */
+.dialog-card {
+  background-color: white !important;
+  opacity: 1 !important;
+}
