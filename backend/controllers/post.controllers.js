@@ -6,15 +6,33 @@ import { publishToInstagram, publishToLinkedIn } from '../services/social.servic
 
 // Create Draft
 export const createDraft = async (req, res) => {
+    const startTime = Date.now();
+    console.log('\n🚀 CREATE DRAFT - START');
+    console.log('━'.repeat(80));
+
     try {
         const { caption, platforms, hashtags, scheduledFor } = req.body;
         const userId = req.user._id;
 
+        console.log('📝 Request Data:');
+        console.log(`   Caption: ${caption || 'Not provided'}`);
+        console.log(`   Platforms: ${platforms || 'instagram (default)'}`);
+        console.log(`   Hashtags: ${hashtags || 'None'}`);
+        console.log(`   Scheduled: ${scheduledFor || 'Not scheduled'}`);
+        console.log(`   Files: ${req.files?.length || 0} images`);
+
         // Upload images to Cloudinary
+        console.log('\n☁️  CLOUDINARY UPLOAD - START');
         const uploadedImages = [];
         if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
+            for (let i = 0; i < req.files.length; i++) {
+                const file = req.files[i];
+                console.log(`   📤 Uploading image ${i + 1}/${req.files.length}: ${file.originalname}`);
+                const uploadStart = Date.now();
+
                 const result = await uploadToCloudinary(file.path, 'drafts');
+                const uploadTime = Date.now() - uploadStart;
+
                 uploadedImages.push({
                     url: result.secure_url,
                     publicId: result.public_id,
@@ -22,10 +40,14 @@ export const createDraft = async (req, res) => {
                     width: result.width,
                     height: result.height
                 });
+
+                console.log(`   ✓ Uploaded in ${uploadTime}ms: ${result.secure_url.substring(0, 60)}...`);
             }
         }
+        console.log(`☁️  CLOUDINARY UPLOAD - COMPLETE (${uploadedImages.length} images)\n`);
 
         // Create draft post
+        console.log('💾 CREATING DRAFT IN DATABASE');
         const draft = await DraftPost.create({
             userId,
             originalCaption: caption,
@@ -35,9 +57,13 @@ export const createDraft = async (req, res) => {
             scheduledFor: scheduledFor || null,
             status: 'processing'
         });
+        console.log(`✓ Draft created with ID: ${draft._id}\n`);
 
-        // Trigger agent pipeline with all agents (caption + music)
-        console.log('🤖 Starting AI agent pipeline...');
+        // Trigger agent pipeline
+        console.log('🤖 STARTING AI AGENT PIPELINE');
+        console.log('━'.repeat(80));
+        const pipelineStart = Date.now();
+
         const job = await startAgentPipeline({
             draftId: draft._id,
             userId,
@@ -46,20 +72,36 @@ export const createDraft = async (req, res) => {
             platforms: draft.platforms
         });
 
-        console.log(`✓ AI processing started - Job ID: ${job._id}`);
+        const pipelineTime = Date.now() - pipelineStart;
+        console.log(`✓ Pipeline triggered in ${pipelineTime}ms - Job ID: ${job._id}`);
+        console.log('━'.repeat(80));
+
+        const totalTime = Date.now() - startTime;
+        console.log(`\n✅ CREATE DRAFT - COMPLETE in ${totalTime}ms`);
+        console.log('━'.repeat(80));
 
         res.status(201).json({
             success: true,
-            message: 'Draft created and AI processing started (caption & music)',
+            message: 'Draft created and AI processing started',
             data: {
                 draftId: draft._id,
                 jobId: job._id,
                 status: draft.status,
-                agentsTriggered: ['captionAgent', 'musicAgent', 'imageAgent', 'videoAgent']
+                agentsTriggered: ['captionAgent', 'musicAgent', 'imageAgent', 'videoAgent'],
+                timing: {
+                    total: `${totalTime}ms`,
+                    cloudinaryUpload: `${uploadedImages.length} images`,
+                    pipelineStart: `${pipelineTime}ms`
+                }
             }
         });
     } catch (error) {
-        console.error('Create draft error:', error);
+        const totalTime = Date.now() - startTime;
+        console.error(`\n❌ CREATE DRAFT - FAILED after ${totalTime}ms`);
+        console.error('Error:', error.message);
+        console.error('Stack:', error.stack);
+        console.log('━'.repeat(80));
+
         res.status(500).json({
             success: false,
             message: error.message || 'Failed to create draft'
@@ -112,7 +154,7 @@ export const getDrafts = async (req, res) => {
     }
 };
 
-// Get Draft By ID - Enhanced to show music suggestions
+// Get Draft By ID - Enhanced to show all AI-generated content
 export const getDraftById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -127,15 +169,20 @@ export const getDraftById = async (req, res) => {
             });
         }
 
-        // Format response with music suggestions
+        // Format response with all AI results
         const response = {
             ...draft.toObject(),
             aiResults: {
                 captions: draft.aiGeneratedCaptions || [],
+                captionsCount: (draft.aiGeneratedCaptions || []).length,
                 images: draft.aiGeneratedImages || [],
+                imagesCount: (draft.aiGeneratedImages || []).length,
                 video: draft.aiGeneratedVideo || null,
-                musicSuggestions: draft.musicSuggestions || []
-            }
+                hasVideo: !!draft.aiGeneratedVideo,
+                musicSuggestions: draft.musicSuggestions || [],
+                musicCount: (draft.musicSuggestions || []).length
+            },
+            processingComplete: draft.status === 'ready'
         };
 
         res.status(200).json({
@@ -245,7 +292,7 @@ export const deleteDraft = async (req, res) => {
     }
 };
 
-// Publish Post
+// Publish Post - Enhanced to include video
 export const publishPost = async (req, res) => {
     try {
         const { draftId, platforms } = req.body;
@@ -270,8 +317,9 @@ export const publishPost = async (req, res) => {
                 const postData = {
                     caption: draft.selectedCaption || draft.originalCaption,
                     images: draft.selectedImages || draft.originalImages,
-                    video: draft.selectedVideo,
-                    hashtags: draft.hashtags
+                    video: draft.selectedVideo || draft.aiGeneratedVideo,  // Include AI-generated video
+                    hashtags: draft.hashtags,
+                    musicSuggestions: draft.musicSuggestions  // Include music suggestions
                 };
 
                 if (platform === 'instagram') {
@@ -288,7 +336,7 @@ export const publishPost = async (req, res) => {
                         url: result.url
                     });
 
-                    // Create published post record
+                    // Create published post record with all AI content
                     await PublishedPost.create({
                         userId,
                         draftId: draft._id,
@@ -299,6 +347,7 @@ export const publishPost = async (req, res) => {
                         images: postData.images,
                         video: postData.video,
                         hashtags: postData.hashtags,
+                        musicSuggestions: postData.musicSuggestions,
                         publishedAt: new Date()
                     });
                 } else {
@@ -324,10 +373,16 @@ export const publishPost = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: 'Post published',
+            message: 'Post published with all AI enhancements',
             data: {
                 draftId: draft._id,
-                results: publishResults
+                results: publishResults,
+                aiContent: {
+                    captionUsed: !!draft.aiGeneratedCaptions.length,
+                    videoGenerated: !!draft.aiGeneratedVideo,
+                    musicSuggested: !!draft.musicSuggestions.length,
+                    imagesProcessed: !!draft.aiGeneratedImages.length
+                }
             }
         });
     } catch (error) {
