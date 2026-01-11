@@ -1,92 +1,153 @@
-from typing import List
-from google import genai
-import mimetypes
-import json
+import google.generativeai as genai
+from PIL import Image
+import re
 
 
 class InstagramCaptionOptimizer:
-    def __init__(self, gemini_api_key: str):
-        self.client = genai.Client(api_key=gemini_api_key)
-        # Use a vision-capable model from the available list
-        self.model_name = "models/gemini-2.5-flash"
+    def __init__(self, gemini_api_key):
+        genai.configure(api_key=gemini_api_key)
+        # Try to use available models with correct names
+        self.available_models = [
+            'models/gemini-2.5-flash',
+            'models/gemini-2.0-flash',
+            'models/gemini-flash-latest',
+            'models/gemini-2.5-pro',
+        ]
+        self.model = None
+        self._init_model()
 
-    def analyze_image(self, image_path: str) -> dict:
-        with open(image_path, "rb") as img_file:
-            img_bytes = img_file.read()
+    def _init_model(self):
+        """Initialize the first available model"""
+        for model_name in self.available_models:
+            try:
+                self.model = genai.GenerativeModel(model_name)
+                print(f"✓ Successfully initialized model: {model_name}")
+                return
+            except Exception as e:
+                print(f"✗ Failed to initialize {model_name}: {str(e)[:50]}")
+                continue
 
-        prompt = (
-            "Describe the subject and mood of this image for Instagram content optimization. "
-            "Return only a JSON object with 'subject' and 'mood'."
-        )
+        print("⚠️  No vision models available, will use fallback captions")
 
-        mime_type, _ = mimetypes.guess_type(image_path)
-        blob = genai.types.Blob(mime_type=mime_type or "image/png", data=img_bytes)
-        image_part = genai.types.Part(inline_data=blob)
+    def optimize(self, image_path, intent):
+        """
+        Optimize caption for Instagram using Gemini Vision
 
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=[prompt, image_part]
-        )
+        Args:
+            image_path: Path to the image file
+            intent: User's intended message/context
 
+        Returns:
+            dict with 'caption' and 'hashtags'
+        """
         try:
-            return json.loads(response.text)
-        except Exception:
-            return {"subject": "photo", "mood": "neutral"}
+            # Open and validate image
+            try:
+                img = Image.open(image_path)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                fixed_path = image_path.rsplit('.', 1)[0] + '_fixed.jpg'
+                img.save(fixed_path, 'JPEG', quality=95)
+                img_to_use = Image.open(fixed_path)
+            except Exception as e:
+                raise Exception(f"Image processing failed: {str(e)}")
 
-    def decide_strategy(self, intent: str, image_analysis: dict) -> str:
-        if any(q in intent.lower() for q in ["?", "how", "what", "why", "who"]):
-            return "question"
-        if "story" in intent.lower():
-            return "story"
-        if image_analysis.get("mood") in ["happy", "excited", "fun"]:
-            return "hook"
-        return "minimal"
+            # Create prompt
+            prompt = f"""
+Analyze this image and create an engaging Instagram caption based on the following intent:
+"{intent}"
 
-    def generate_caption(self, intent: str, image_analysis: dict, strategy: str) -> str:
-        prompt = (
-            "You are an Instagram Caption Optimization Agent. "
-            "Your goal is to maximize reach, saves, comments, and shares. "
-            "Instagram only. Sound human, not AI. "
-            "No corporate or LinkedIn tone. No hashtag stuffing. "
-            "No explanations. Return only the caption.\n\n"
-            f"Subject: {image_analysis.get('subject')}\n"
-            f"Mood: {image_analysis.get('mood')}\n"
-            f"Intent: {intent}\n"
-            f"Strategy: {strategy}"
-        )
+Requirements:
+1. Create a captivating caption (2-3 sentences) that matches the intent
+2. Use emojis appropriately to enhance engagement
+3. Make it authentic and relatable
+4. Suggest 5-8 relevant hashtags
 
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=prompt
-        )
-        return response.text.strip()
+Format your response EXACTLY as:
+CAPTION: [your caption here]
+HASHTAGS: [comma-separated hashtags without #]
+"""
 
-    def generate_hashtags(self, image_analysis: dict, intent: str) -> List[str]:
-        prompt = (
-            "Generate 8–15 Instagram hashtags (broad + niche). "
-            "Instagram only. No explanations. Return only hashtags.\n\n"
-            f"Subject: {image_analysis.get('subject')}\n"
-            f"Mood: {image_analysis.get('mood')}\n"
-            f"Intent: {intent}"
-        )
+            # Generate content with image
+            if self.model:
+                try:
+                    response = self.model.generate_content([prompt, img_to_use])
+                    response_text = response.text
+                except Exception as e:
+                    error_str = str(e)
+                    print(f"⚠️  Model generation failed: {error_str[:100]}")
+                    if '429' in error_str or 'RESOURCE_EXHAUSTED' in error_str or 'quota' in error_str.lower():
+                        print(f"Using fallback caption generation")
+                        response_text = self._generate_fallback_caption(intent)
+                    else:
+                        raise
+            else:
+                print(f"No model available, using fallback caption")
+                response_text = self._generate_fallback_caption(intent)
 
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=prompt
-        )
+            # Parse response
+            caption = ""
+            hashtags = []
 
-        return [t for t in response.text.split() if t.startswith("#")][:15]
+            # Extract caption
+            caption_match = re.search(r'CAPTION:\s*(.+?)(?=HASHTAGS:|$)', response_text, re.DOTALL | re.IGNORECASE)
+            if caption_match:
+                caption = caption_match.group(1).strip()
 
-    def optimize(self, image_path: str, intent: str) -> dict:
-        image_analysis = self.analyze_image(image_path)
-        strategy = self.decide_strategy(intent, image_analysis)
-        caption = self.generate_caption(intent, image_analysis, strategy)
-        hashtags = self.generate_hashtags(image_analysis, intent)
+            # Extract hashtags
+            hashtags_match = re.search(r'HASHTAGS:\s*(.+?)$', response_text, re.DOTALL | re.IGNORECASE)
+            if hashtags_match:
+                hashtag_text = hashtags_match.group(1).strip()
+                hashtags = [tag.strip().lstrip('#') for tag in hashtag_text.split(',')]
+                hashtags = [f"#{tag}" for tag in hashtags if tag]
 
-        # Return structured data so callers don't need to parse strings
+            # Fallback if parsing fails
+            if not caption:
+                caption = response_text.strip()
+                hashtags = re.findall(r'#\w+', response_text)
+
+            return {
+                "caption": caption,
+                "hashtags": hashtags[:8]
+            }
+
+        except Exception as e:
+            # Last resort: return fallback caption
+            print(f"Error in optimize: {str(e)}")
+            result = self._parse_fallback(self._generate_fallback_caption(intent))
+            return result
+
+    def _generate_fallback_caption(self, intent):
+        """Generate a basic caption when API is unavailable"""
+        words = intent.lower().split()
+
+        caption = f"✨ {intent.capitalize()}! "
+        caption += "Creating unforgettable moments and sharing them with you. 📸 "
+
+        keywords = ['instagram', 'photography', 'lifestyle', 'moments', 'inspiration']
+        for word in words[:3]:
+            if len(word) > 3 and word.isalpha():
+                keywords.append(word)
+
+        hashtags_text = ', '.join(keywords[:8])
+
+        return f"CAPTION: {caption}\nHASHTAGS: {hashtags_text}"
+
+    def _parse_fallback(self, text):
+        """Parse fallback caption text"""
+        caption = ""
+        hashtags = []
+
+        caption_match = re.search(r'CAPTION:\s*(.+?)(?=HASHTAGS:|$)', text, re.DOTALL | re.IGNORECASE)
+        if caption_match:
+            caption = caption_match.group(1).strip()
+
+        hashtags_match = re.search(r'HASHTAGS:\s*(.+?)$', text, re.DOTALL | re.IGNORECASE)
+        if hashtags_match:
+            hashtag_text = hashtags_match.group(1).strip()
+            hashtags = [f"#{tag.strip()}" for tag in hashtag_text.split(',') if tag.strip()]
+
         return {
-            "caption": caption,
-            "hashtags": hashtags,
-            "analysis": image_analysis,
-            "strategy": strategy,
+            "caption": caption or "✨ Check out this amazing moment!",
+            "hashtags": hashtags[:8]
         }

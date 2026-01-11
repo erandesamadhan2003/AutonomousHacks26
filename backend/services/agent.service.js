@@ -1,8 +1,10 @@
 import axios from 'axios';
+import FormData from 'form-data';
 import { AgentJob } from '../models/AgentJob.js';
 import { DraftPost } from '../models/DraftPost.js';
 
 const PYTHON_AGENT_BASE_URL = process.env.PYTHON_AGENT_URL || 'http://localhost:5000';
+const MUSIC_AGENT_URL = process.env.MUSIC_SUGGESTION_AGENT_URL || 'http://localhost:5004';
 
 // Start agent pipeline
 export const startAgentPipeline = async ({ draftId, userId, originalCaption, originalImages, platforms }) => {
@@ -21,10 +23,10 @@ export const startAgentPipeline = async ({ draftId, userId, originalCaption, ori
 
         // Call all agents in parallel
         const agentPromises = [
-            callCaptionAgent(draftId, originalCaption, platforms),
+            callCaptionAgent(draftId, originalCaption, platforms, originalImages),
             callImageAgent(draftId, originalImages),
             callVideoAgent(draftId, originalImages),
-            callMusicAgent(draftId, originalCaption)
+            callMusicAgent(draftId, originalCaption, originalImages)  // Pass images for context
         ];
 
         Promise.all(agentPromises)
@@ -52,36 +54,84 @@ export const startAgentPipeline = async ({ draftId, userId, originalCaption, ori
 };
 
 // Call Caption Agent
-const callCaptionAgent = async (draftId, caption, platforms) => {
+const callCaptionAgent = async (draftId, caption, platforms, images) => {
     try {
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.captionAgent': 'processing' }
         );
 
-        const response = await axios.post(`${PYTHON_AGENT_BASE_URL}/agents/caption`, {
-            draftId,
-            caption,
-            platforms
-        }, { timeout: 30000 });
+        // Generate captions for each platform
+        const captions = [];
+
+        for (const platform of platforms) {
+            // Use the first image for caption optimization
+            const imageUrl = images && images.length > 0 ? images[0].url : null;
+
+            if (!imageUrl) {
+                console.warn('No image available for caption optimization');
+                continue;
+            }
+
+            // For Instagram optimization
+            if (platform === 'instagram') {
+                const formData = new FormData();
+
+                // Download image and send it as file
+                const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                formData.append('image', Buffer.from(imageResponse.data), {
+                    filename: 'image.jpg',
+                    contentType: 'image/jpeg'
+                });
+                formData.append('intent', caption || 'Generate engaging caption for social media');
+
+                const response = await axios.post(
+                    `${PYTHON_AGENT_BASE_URL}/api/instagram/optimize`,
+                    formData,
+                    {
+                        headers: formData.getHeaders(),
+                        timeout: 30000
+                    }
+                );
+
+                if (response.data.success) {
+                    captions.push({
+                        platform: 'instagram',
+                        text: response.data.caption,
+                        hashtags: response.data.hashtags
+                    });
+                }
+            } else {
+                // For other platforms, use generic caption
+                captions.push({
+                    platform,
+                    text: caption || 'Check out this amazing content!',
+                    hashtags: []
+                });
+            }
+        }
 
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.captionAgent': 'completed' }
         );
 
-        return response.data.captions;
+        return captions;
     } catch (error) {
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.captionAgent': 'failed' }
         );
         console.error('Caption agent error:', error);
-        return [];
+        return [{
+            platform: platforms[0] || 'instagram',
+            text: caption || 'Check out this post!',
+            hashtags: []
+        }];
     }
 };
 
-// Call Image Agent
+// Call Image Agent - Updated implementation
 const callImageAgent = async (draftId, images) => {
     try {
         await AgentJob.updateOne(
@@ -89,23 +139,52 @@ const callImageAgent = async (draftId, images) => {
             { 'agentStatuses.imageAgent': 'processing' }
         );
 
-        const response = await axios.post(`${PYTHON_AGENT_BASE_URL}/agents/image`, {
-            draftId,
-            images
-        }, { timeout: 60000 });
+        // Convert image URLs to base64
+        const imagesBase64 = [];
+        for (const img of images) {
+            try {
+                const response = await axios.get(img.url, { responseType: 'arraybuffer' });
+                const base64 = Buffer.from(response.data).toString('base64');
+                imagesBase64.push(`data:image/jpeg;base64,${base64}`);
+            } catch (error) {
+                console.error(`Failed to download image: ${img.url}`);
+            }
+        }
+
+        if (imagesBase64.length === 0) {
+            throw new Error('No images could be processed');
+        }
+
+        const response = await axios.post(`${PYTHON_AGENT_BASE_URL.replace('5000', '5001')}/process-images`, {
+            images: imagesBase64,
+            platform: 'instagram_post',
+            filters: ['enhanced', 'vibrant', 'professional', 'bold'],
+            enhance: true,
+            cropMode: 'center'
+        }, {
+            timeout: 60000,
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
 
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.imageAgent': 'completed' }
         );
 
-        return response.data.images;
+        if (response.data.success) {
+            console.log(`✓ Images processed: ${response.data.count} images with variants`);
+            return response.data.processedImages;
+        } else {
+            return [];
+        }
     } catch (error) {
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.imageAgent': 'failed' }
         );
-        console.error('Image agent error:', error);
+        console.error('Image agent error:', error.message);
         return [];
     }
 };
@@ -139,32 +218,73 @@ const callVideoAgent = async (draftId, images) => {
     }
 };
 
-// Call Music Agent
-const callMusicAgent = async (draftId, caption) => {
+// Call Music Agent - Updated with proper integration
+const callMusicAgent = async (draftId, caption, images) => {
     try {
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.musicAgent': 'processing' }
         );
 
-        const response = await axios.post(`${PYTHON_AGENT_BASE_URL}/agents/music`, {
-            draftId,
-            caption
-        }, { timeout: 30000 });
+        // Prepare description from caption and image context
+        let description = caption || 'Generate music suggestions';
+
+        // If we have images, add context about them
+        if (images && images.length > 0) {
+            description += ` with ${images.length} image${images.length > 1 ? 's' : ''}`;
+        }
+
+        const response = await axios.post(`${MUSIC_AGENT_URL}/suggest-music`, {
+            description: description,
+            caption: caption || '',
+            limit: 5
+        }, {
+            timeout: 30000,
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
 
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.musicAgent': 'completed' }
         );
 
-        return response.data.suggestions;
+        if (response.data.success) {
+            console.log(`✓ Music suggestions generated: ${response.data.count} tracks for mood: ${response.data.detectedMood}`);
+            return response.data.suggestions;
+        } else {
+            console.warn('Music agent returned unsuccessful response');
+            return [];
+        }
     } catch (error) {
         await AgentJob.updateOne(
             { draftId },
             { 'agentStatuses.musicAgent': 'failed' }
         );
-        console.error('Music agent error:', error);
-        return [];
+        console.error('Music agent error:', error.message);
+
+        // Return fallback music suggestions
+        return [
+            {
+                title: "Feel Good Music",
+                artist: "Upbeat Playlist",
+                mood: "upbeat",
+                genre: "Pop"
+            },
+            {
+                title: "Happy Vibes",
+                artist: "Positive Mix",
+                mood: "happy",
+                genre: "Pop"
+            },
+            {
+                title: "Energy Boost",
+                artist: "Motivational Tracks",
+                mood: "energetic",
+                genre: "Dance"
+            }
+        ];
     }
 };
 
@@ -177,6 +297,12 @@ const updateDraftWithResults = async (draftId, { captions, images, video, music 
         if (captions && captions.length > 0) {
             draft.aiGeneratedCaptions = captions;
             draft.selectedCaption = captions[0]?.text || draft.originalCaption;
+
+            // Extract all hashtags from generated captions
+            const allHashtags = captions.flatMap(c => c.hashtags || []);
+            if (allHashtags.length > 0) {
+                draft.hashtags = [...new Set([...draft.hashtags, ...allHashtags])];
+            }
         }
 
         if (images && images.length > 0) {

@@ -36,7 +36,8 @@ export const createDraft = async (req, res) => {
             status: 'processing'
         });
 
-        // Trigger agent pipeline
+        // Trigger agent pipeline with all agents (caption + music)
+        console.log('🤖 Starting AI agent pipeline...');
         const job = await startAgentPipeline({
             draftId: draft._id,
             userId,
@@ -45,13 +46,16 @@ export const createDraft = async (req, res) => {
             platforms: draft.platforms
         });
 
+        console.log(`✓ AI processing started - Job ID: ${job._id}`);
+
         res.status(201).json({
             success: true,
-            message: 'Draft created and AI processing started',
+            message: 'Draft created and AI processing started (caption & music)',
             data: {
                 draftId: draft._id,
                 jobId: job._id,
-                status: draft.status
+                status: draft.status,
+                agentsTriggered: ['captionAgent', 'musicAgent', 'imageAgent', 'videoAgent']
             }
         });
     } catch (error) {
@@ -108,7 +112,7 @@ export const getDrafts = async (req, res) => {
     }
 };
 
-// Get Draft By ID
+// Get Draft By ID - Enhanced to show music suggestions
 export const getDraftById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -123,9 +127,20 @@ export const getDraftById = async (req, res) => {
             });
         }
 
+        // Format response with music suggestions
+        const response = {
+            ...draft.toObject(),
+            aiResults: {
+                captions: draft.aiGeneratedCaptions || [],
+                images: draft.aiGeneratedImages || [],
+                video: draft.aiGeneratedVideo || null,
+                musicSuggestions: draft.musicSuggestions || []
+            }
+        };
+
         res.status(200).json({
             success: true,
-            data: draft
+            data: response
         });
     } catch (error) {
         console.error('Get draft by ID error:', error);
