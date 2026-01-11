@@ -253,28 +253,11 @@ export default function CreatePost() {
 
             {/* Step 4: Review Content */}
             {currentStep === 4 && (
-              <>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="lg:col-span-2">
-                    <Step4ReviewContent
-                      images={images}
-                      aiContent={aiContent}
-                      selectedCaption={selectedCaption}
-                      selectedHashtags={selectedHashtags}
-                      selectedMusic={selectedMusic}
-                      onCaptionChange={setSelectedCaption}
-                      onHashtagChange={setSelectedHashtags}
-                      onMusicChange={setSelectedMusic}
-                      isProcessing={isProcessing}
-                    />
-                  </div>
-
-                  {/* Processing Status */}
-                  <div className="lg:col-span-1">
-                    <ProcessingStatus agentStatuses={agentStatuses} />
-                  </div>
-                </div>
-              </>
+              <Step4ReviewContent
+                images={images}
+                draftId={draftId} // Pass the draftId from useCreateContent
+                isProcessing={isProcessing}
+              />
             )}
           </div>
         </Card>
